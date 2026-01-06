@@ -57,9 +57,13 @@ Make sure they are installed via the Package Manager.
 
 ## Installation
 
-1. Open **Window → Package Manager**.
-2. Install **Splines** and **Mathematics**.
-3. Copy `UILineDrawer.cs` into your project.
+```
+https://github.com/Lamonin/UILineDrawer.git?path=/Assets/UILineDrawer/#0.1.0
+```
+
+1. Open **Window** → **Package Manager**.
+2. Press the + button, choose "**Add package from git URL...**"
+3. Enter url above and press **Add**.
 
 ---
 
