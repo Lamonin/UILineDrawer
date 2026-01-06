@@ -1,0 +1,19 @@
+{
+  "name": "com.maro.uilinedrawer",
+  "version": "0.1.0",
+  "displayName": "UILineDrawer",
+  "description": "Line drawer optimized for Unity canvas space",
+  "unity": "2022.3",
+  "licensesUrl": "https://github.com/Lamonin/UILineDrawer/blob/main/LICENSE",
+  "dependencies": {
+    "com.unity.mathematics": "1.2.1",
+    "com.unity.splines": "2.8.2"
+  },
+  "keywords": [
+    "ui"
+  ],
+  "author": {
+    "name": "Maro",
+    "email": "rolshchikov.maxim@gmail.com"
+  }
+}

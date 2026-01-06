@@ -1,0 +1,18 @@
+{
+    "name": "UILineDrawer.Editor",
+    "rootNamespace": "UILineDrawer",
+    "references": [
+        "GUID:63e5c9efca8a5c943b4c4dc03f75b6bc"
+    ],
+    "includePlatforms": [
+        "Editor"
+    ],
+    "excludePlatforms": [],
+    "allowUnsafeCode": false,
+    "overrideReferences": false,
+    "precompiledReferences": [],
+    "autoReferenced": true,
+    "defineConstraints": [],
+    "versionDefines": [],
+    "noEngineReferences": false
+}
