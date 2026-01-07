@@ -3,7 +3,7 @@
 **UILineDrawer** is a Unity UI component for rendering smooth, high-quality lines directly inside the **Canvas** system.
 It is designed for precise visual output and accurate interaction, using optimized mesh generation and spline-based curves.
 
-The component is built on top of the **Unity.Splines** package and supports adjustable thickness, configurable curve resolution, and robust raycasting directly along the rendered line.
+The component is built on top of the custom Bezier spline implementation and supports adjustable thickness, configurable curve resolution, and robust raycasting directly along the rendered line.
 
 UILineDrawer was developed and production-tested in the
 [Д.И.В.О.](https://games.kruzhok.org/games_library/338) project.
@@ -32,7 +32,7 @@ UILineDrawer was created to solve this limitation.
 
 * **Spline-Based Rendering**
 
-  Uses `Unity.Splines` to render smooth Bezier curves with controllable tangents.
+  Uses custom spline implementation to render smooth Bezier curves with controllable tangents.
 
 * **Mesh Optimization**
 
@@ -48,10 +48,9 @@ UILineDrawer was created to solve this limitation.
 
 This package depends on the following Unity packages:
 
-* **Splines** (`com.unity.splines`)
 * **Mathematics** (`com.unity.mathematics`)
 
-Make sure they are installed via the Package Manager.
+Make sure it installed via the Package Manager.
 
 ---
 
@@ -129,11 +128,7 @@ public class LineController : MonoBehaviour
 
 * **2D UI Space Only**
 
-  Mesh generation is designed specifically for the Canvas (XY plane). Modifying Z values may lead to unexpected results.
-
-* **Spline Dependency**
-
-  The implementation is tightly coupled to `Unity.Splines`.
+  Mesh generation is designed specifically for the Canvas (XY plane).
 
 * **Performance Trade-off**
 
