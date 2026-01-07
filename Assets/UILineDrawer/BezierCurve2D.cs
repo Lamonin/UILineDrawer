@@ -8,12 +8,12 @@ namespace Maro.UILineDrawer
     /// </summary>
     public readonly struct BezierCurve2D
     {
-        public readonly float3 P0; // Start Position
-        public readonly float3 P1; // Start Tangent (World/Local space, not relative)
-        public readonly float3 P2; // End Tangent (World/Local space, not relative)
-        public readonly float3 P3; // End Position
+        public readonly float2 P0;
+        public readonly float2 P1;
+        public readonly float2 P2;
+        public readonly float2 P3;
 
-        public BezierCurve2D(float3 p0, float3 p1, float3 p2, float3 p3)
+        public BezierCurve2D(float2 p0, float2 p1, float2 p2, float2 p3)
         {
             P0 = p0;
             P1 = p1;
@@ -22,7 +22,7 @@ namespace Maro.UILineDrawer
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public float3 Evaluate(float t)
+        public float2 Evaluate(float t)
         {
             t = math.saturate(t);
             float rt = 1 - t;

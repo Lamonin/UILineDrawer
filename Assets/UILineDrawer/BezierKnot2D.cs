@@ -10,25 +10,25 @@ namespace Maro.UILineDrawer
     [Serializable]
     public struct BezierKnot2D
     {
-        public float3 Position;
-        public float3 TangentIn;
-        public float3 TangentOut;
-        public quaternion Rotation;
+        public float2 Position;
+        public float2 TangentIn;
+        public float2 TangentOut;
+        public float Rotation;
 
-        public BezierKnot2D(float3 position)
+        public BezierKnot2D(float2 position)
         {
             Position = position;
-            TangentIn = float3.zero;
-            TangentOut = float3.zero;
-            Rotation = quaternion.identity;
+            TangentIn = float2.zero;
+            TangentOut = float2.zero;
+            Rotation = 0;
         }
 
-        public BezierKnot2D(float3 position, float3 tangentIn, float3 tangentOut)
+        public BezierKnot2D(float2 position, float2 tangentIn, float2 tangentOut, float rotation = 0)
         {
             Position = position;
             TangentIn = tangentIn;
             TangentOut = tangentOut;
-            Rotation = quaternion.identity;
+            Rotation = rotation;
         }
     }
 }
