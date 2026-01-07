@@ -1,16 +1,7 @@
-/*
-KNOW ISSUES:
-1. Завязан на Unity.Splines, что не есть хорошо, т.к. рассчитано на 2D. Возможно стоит сделать кастомную реализацию для сплайнов.
-*/
-
 using System.Collections.Generic;
 using Unity.Mathematics;
 using UnityEngine;
-using UnityEngine.Splines;
 using UnityEngine.UI;
-# if UNITY_EDITOR
-using UnityEditor.Splines;
-# endif
 
 namespace Maro.UILineDrawer
 {
@@ -92,7 +83,7 @@ namespace Maro.UILineDrawer
             }
         }
 
-        private Spline m_Spline;
+        private Spline2D m_Spline;
 
         // For performance reasons, we cache the VertexHelper
         private VertexHelper vh;
@@ -106,26 +97,7 @@ namespace Maro.UILineDrawer
             if (Application.isPlaying)
             {
                 CreateSpline();
-                Spline.Changed += OnSplineChangedRuntime;
             }
-
-#if UNITY_EDITOR
-            EditorSplineUtility.AfterSplineWasModified += OnSplineChangedEditor;
-#endif
-        }
-
-        protected override void OnDisable()
-        {
-            base.OnDisable();
-
-            if (Application.isPlaying)
-            {
-                Spline.Changed -= OnSplineChangedRuntime;
-            }
-
-#if UNITY_EDITOR
-            EditorSplineUtility.AfterSplineWasModified -= OnSplineChangedEditor;
-#endif
         }
 
 #if UNITY_EDITOR
@@ -148,26 +120,8 @@ namespace Maro.UILineDrawer
 
         private void CreateSpline()
         {
-            m_Spline ??= new Spline();
+            m_Spline ??= new Spline2D();
         }
-
-        private void OnSplineChangedRuntime(Spline spline, int i, SplineModification modification)
-        {
-            if (spline == m_Spline)
-            {
-                SetAllDirty();
-            }
-        }
-
-#if UNITY_EDITOR
-        private void OnSplineChangedEditor(Spline spline)
-        {
-            if (spline == m_Spline)
-            {
-                SetAllDirty();
-            }
-        }
-#endif
 
         /// <summary>
         /// Adds a new point to the spline and updates the corresponding knot in m_Spline.
@@ -218,7 +172,7 @@ namespace Maro.UILineDrawer
         /// <summary>
         /// Sets the values of a knot based on a point.
         /// </summary>
-        private static void SetKnotValues(ref BezierKnot knot, in Spline2DPoint point)
+        private static void SetKnotValues(ref BezierKnot2D knot, in Spline2DPoint point)
         {
             knot.Position = point.Position;
             knot.TangentIn = point.TangentIn;
@@ -229,11 +183,7 @@ namespace Maro.UILineDrawer
         /// <summary>
         /// Sets the values of a knot relative to an offset.
         /// </summary>
-        private static void SetKnotValuesRelative(
-            ref BezierKnot knot,
-            in Spline2DPoint point,
-            Vector3 offset
-        )
+        private static void SetKnotValuesRelative(ref BezierKnot2D knot, in Spline2DPoint point, Vector3 offset)
         {
             knot.Position = point.Position - offset;
             knot.TangentIn = point.TangentIn;
@@ -261,70 +211,68 @@ namespace Maro.UILineDrawer
         /// </summary>
         private void UpdateSplineKnots()
         {
-            if (m_Spline == null)
-            {
-                Debug.LogWarning("m_Spline is null. Cannot update knots.");
-                return;
-            }
+            if (m_Spline == null) return;
 
+            // Resize logic handled by custom class
             if (m_Spline.Count != m_Points.Count)
             {
                 m_Spline.Resize(m_Points.Count);
             }
 
-            // Set Broken mode for more control over tangents
-            m_Spline.SetTangentMode(TangentMode.Broken);
+            if (m_Points.Count == 0)
+            {
+                _optimizedPoints.Clear();
+                SetVerticesDirty();
+                return;
+            }
 
-            // First, set real knots values
+            // No tangent mode needed in custom class (implied broken/independent)
+
+            // Set real knots values
             for (int i = 0; i < m_Points.Count; i++)
             {
                 var knot = m_Spline[i];
                 var point = m_Points[i];
-
                 SetKnotValues(ref knot, point);
-
                 m_Spline.SetKnotNoNotify(i, knot);
             }
 
-            // Get optimized points
-            _optimizedPoints = BezierUtility.GenerateOptimizedSplinePoints(
-                m_Spline,
-                m_Subdivisions
-            );
+            // Get optimized points using updated Utility
+            _optimizedPoints = BezierUtility.GenerateOptimizedSplinePoints(m_Spline, m_Subdivisions);
 
             RecalculateBounds();
 
-            // Offset points after bounds recalculation
+            // Offset points and knots logic...
             var localPosition = rectTransform.localPosition;
-
             var offset = (float3)localPosition;
+
             for (int i = 0; i < _optimizedPoints.Count; i++)
             {
                 _optimizedPoints[i] -= offset;
             }
 
-            // Also offset spline knots after bounds recalculation
             for (int i = 0; i < m_Points.Count; i++)
             {
                 var knot = m_Spline[i];
                 var point = m_Points[i];
-
                 SetKnotValuesRelative(ref knot, point, localPosition);
-
-                if (i == m_Points.Count - 1)
-                    m_Spline.SetKnot(i, knot);
-                else
-                    m_Spline.SetKnotNoNotify(i, knot);
+                m_Spline.SetKnot(i, knot);
             }
 
-            // Redraw mesh after updating spline knots
             SetVerticesDirty();
         }
+
 
         [ContextMenu("Refresh")]
         public void Refresh()
         {
             UpdateSplineKnots();
+        }
+
+        public float GetNearestNormalizedPosition(float3 point)
+        {
+            BezierUtility.GetNearestPoint(m_Spline, point, out _, out var t);
+            return t;
         }
 
         protected override void OnPopulateMesh(VertexHelper vh)
@@ -338,10 +286,7 @@ namespace Maro.UILineDrawer
 
         private void CreateMesh()
         {
-            if (m_Spline == null || m_Spline.Count < 2 || m_Spline.GetLength() < m_Thickness)
-                return;
-
-            if (_optimizedPoints.Count < 2)
+            if (m_Spline == null || m_Spline.Count < 2 || _optimizedPoints.Count < 2 || m_Spline.GetLength() < m_Thickness)
                 return;
 
             UIVertex vertex = UIVertex.simpleVert;
@@ -352,8 +297,7 @@ namespace Maro.UILineDrawer
 
             BeginLineSegment(vertex, current, next, out var prevVertIndex);
 
-            var pointsCount = _optimizedPoints.Count;
-            for (int i = 0; i < pointsCount - 2; i++)
+            for (int i = 0; i < _optimizedPoints.Count - 2; i++)
             {
                 var previous = _optimizedPoints[i];
                 current = _optimizedPoints[i + 1];
@@ -397,7 +341,6 @@ namespace Maro.UILineDrawer
             var miter = math.normalize(n1 + n2);
 
             // Calculate length needed to reach the intersection point
-            // formula: thickness / 2 / dot(miter, normal)
             float dot = math.dot(miter, n1);
 
             // Check for parallel lines (dot ~ 0) or extremely sharp angles
@@ -502,19 +445,15 @@ namespace Maro.UILineDrawer
 
         public override bool Raycast(Vector2 sp, Camera camera)
         {
-            RectTransformUtility.ScreenPointToLocalPointInRectangle(
-                rectTransform,
-                sp,
-                camera,
-                out Vector2 localPoint
-            );
+            RectTransformUtility.ScreenPointToLocalPointInRectangle(rectTransform, sp, camera, out Vector2 localPoint);
 
             var point = new float3(localPoint.x, localPoint.y, 0);
-            var distance = SplineUtility.GetNearestPoint(m_Spline, point, out _, out var t);
+
+            float distance = BezierUtility.GetNearestPoint(m_Spline, point, out _, out var t);
 
             if (distance < m_Thickness + m_RaycastExtraThickness)
             {
-                var splineLength = m_Spline.GetLength();
+                var splineLength = m_Spline.GetLength(); // Implemented in Spline2D
                 var pointPosition = t * splineLength;
 
                 return !(pointPosition < m_RaycastStartOffset)
@@ -522,12 +461,6 @@ namespace Maro.UILineDrawer
             }
 
             return false;
-        }
-
-        public float GetNearestNormalizedPosition(float3 point)
-        {
-            SplineUtility.GetNearestPoint(m_Spline, point, out _, out var t);
-            return t;
         }
     }
 }
