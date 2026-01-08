@@ -4,13 +4,14 @@
   "displayName": "UILineDrawer",
   "description": "Line drawer optimized for Unity canvas space",
   "unity": "2022.3",
+  "license": "MIT",
   "licensesUrl": "https://github.com/Lamonin/UILineDrawer/blob/main/LICENSE",
+  "changeLogUrl": "https://github.com/Lamonin/UILineDrawer/releases",
+  "documentationUrl": "https://github.com/Lamonin/UILineDrawer/blob/main/README.md",
+  "keywords": ["ui", "linerenderer", "line drawer"],
   "dependencies": {
     "com.unity.mathematics": "1.2.1"
   },
-  "keywords": [
-    "ui"
-  ],
   "author": {
     "name": "Maro",
     "email": "rolshchikov.maxim@gmail.com"
