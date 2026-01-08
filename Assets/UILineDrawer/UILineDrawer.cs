@@ -12,8 +12,7 @@ namespace Maro.UILineDrawer
         internal const int MaxSubdivisions = 9;
         internal const float MinThickness = 0.1f;
         private const float MiterLimit = 2.0f;
-
-        // CHANGED: List is now of BezierKnot2D directly
+        
         [SerializeField]
         private List<BezierKnot2D> m_Points = new();
 

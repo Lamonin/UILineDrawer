@@ -59,8 +59,8 @@ namespace Maro.UILineDrawer
 
             // 2D Cross product magnitude (Area of triangle * 2)
             // (p1 - p0) cross (p3 - p0)
-            float d1_cross = math.abs((p1.x - p0.x) * v03.y - (p1.y - p0.y) * v03.x);
-            float d2_cross = math.abs((p2.x - p0.x) * v03.y - (p2.y - p0.y) * v03.x);
+            float d1Cross = math.abs((p1.x - p0.x) * v03.y - (p1.y - p0.y) * v03.x);
+            float d2Cross = math.abs((p2.x - p0.x) * v03.y - (p2.y - p0.y) * v03.x);
 
             float lenSq03 = math.lengthsq(v03);
 
@@ -74,8 +74,7 @@ namespace Maro.UILineDrawer
             }
             else
             {
-                if ((d1_cross * d1_cross) <= (toleranceSq * lenSq03) &&
-                    (d2_cross * d2_cross) <= (toleranceSq * lenSq03))
+                if (d1Cross * d1Cross <= toleranceSq * lenSq03 && d2Cross * d2Cross <= toleranceSq * lenSq03)
                 {
                     points.Add(p3);
                     return;
@@ -106,13 +105,13 @@ namespace Maro.UILineDrawer
 
             int curveCount = spline.GetCurveCount();
             if (curveCount == 0) return float.MaxValue;
-            
+
             float tPerCurve = 1.0f / curveCount;
 
             for (int i = 0; i < curveCount; i++)
             {
                 var curve = spline.GetCurve(i);
-                
+
                 GetNearestPointOnCurve(curve, point, out float curveT, out float2 pos, out float dstSq);
 
                 if (dstSq < minDstSq)
@@ -130,13 +129,13 @@ namespace Maro.UILineDrawer
         // Solves 5th degree polynomial via iterations (Gradient Descent style).
         private static void GetNearestPointOnCurve(BezierCurve2D curve, float2 p, out float t, out float2 pos, out float dstSq)
         {
-            const int Steps = 10;
+            const int steps = 10;
             float minSq = float.MaxValue;
             t = 0;
 
-            for (int i = 0; i <= Steps; i++)
+            for (int i = 0; i <= steps; i++)
             {
-                float currT = i / (float)Steps;
+                float currT = i / (float)steps;
                 float2 currPos = curve.Evaluate(currT);
                 float sq = math.distancesq(p, currPos);
                 if (sq < minSq)
@@ -147,7 +146,7 @@ namespace Maro.UILineDrawer
             }
 
             // This is much faster/stable than Newton-Raphson for this specific use case
-            float range = 1.0f / (2 * Steps);
+            float range = 1.0f / (2 * steps);
             for (int i = 0; i < 4; i++) // 4 iterations of refinement
             {
                 float t1 = math.clamp(t - range, 0, 1);
