@@ -6,7 +6,24 @@ It is designed for precise visual output and accurate interaction, using optimiz
 The component is built on top of the custom Bezier spline implementation and supports adjustable thickness, configurable curve resolution, and robust raycasting directly along the rendered line.
 
 UILineDrawer was developed and production-tested in the
-[Д.И.В.О.](https://games.kruzhok.org/games_library/338) project.
+[Д.И.В.О.](https://games.kruzhok.org/games_library/338) project (more in [Showcase](#showcase) section).
+
+<details open>
+    <summary>Line Example</summary>
+
+![Line Example](images/line.png)
+
+> 4 point spline with subdivision level 3
+
+</details>
+
+<details>
+    <summary>Mesh Generation</summary>
+
+![Line Mesh Example](images/mesh_example.gif)
+> Line mesh generation Example
+
+</details>
 
 ---
 
@@ -22,25 +39,15 @@ UILineDrawer was created to solve this limitation.
 
 ## Features
 
-* **Native Canvas Integration**
+* **Native Canvas Integration**: inherits from `MaskableGraphic`, ensuring full compatibility with Unity UI systems such as masking, layout, and batching.
 
-  Inherits from `MaskableGraphic`, ensuring full compatibility with Unity UI systems such as masking, layout, and batching.
+* **Precise Raycasting**: supports raycast detection **along the line itself**, with configurable extra thickness and start/end padding.
 
-* **Precise Raycasting**
+* **Spline-Based Rendering**: uses custom spline implementation to render smooth Bezier curves with controllable tangents.
 
-  Supports raycast detection **along the line itself**, with configurable extra thickness and start/end padding.
+* **Mesh Optimization**: adjustable subdivision levels allow fine control over the balance between visual smoothness and vertex count.
 
-* **Spline-Based Rendering**
-
-  Uses custom spline implementation to render smooth Bezier curves with controllable tangents.
-
-* **Mesh Optimization**
-
-  Adjustable subdivision levels allow fine control over the balance between visual smoothness and vertex count.
-
-* **Runtime API**
-
-  Full C# API to add, remove, and modify spline points and visual properties at runtime.
+* **Runtime API**: full C# API to add, remove, and modify spline points and visual properties at runtime.
 
 ---
 
@@ -50,14 +57,14 @@ This package depends on the following Unity packages:
 
 * **Mathematics** (`com.unity.mathematics`)
 
-Make sure it installed via the Package Manager.
+Make sure it installed via the Package Manager if they not installed automatically.
 
 ---
 
 ## Installation
 
 ```
-https://github.com/Lamonin/UILineDrawer.git?path=/Assets/UILineDrawer/#0.2.0
+https://github.com/Lamonin/UILineDrawer.git?path=/Assets/UILineDrawer/#0.2.1
 ```
 
 1. Open **Window** → **Package Manager**.
@@ -86,19 +93,21 @@ using Maro.UILineDrawer;
 
 public class LineController : MonoBehaviour
 {
-    [SerializeField] private UILineDrawer lineDrawer;
+    [SerializeField]
+    private UILineDrawer lineDrawer;
 
     void Start()
     {
-        var newPoint = new Spline2DPoint
-        {
-            Position = new Vector3(100, 100, 0),
-            TangentIn = new Vector3(-50, 0, 0),
-            TangentOut = new Vector3(50, 0, 0),
-            Rotation = 0
-        };
-
-        lineDrawer.AddPoint(newPoint);
+        lineDrawer.AddPoint(new Vector2(-50, 0));
+        
+        lineDrawer.AddPoint(
+            position: new Vector2(0, 50),
+            tangentIn: new Vector2(-25, 0),
+            tangentOut: new Vector2(25, 0),
+            rotation: 0
+        );
+        
+        lineDrawer.AddPoint(new Vector2(50, 0));
 
         lineDrawer.Thickness = 10f;
         lineDrawer.color = Color.red;
@@ -120,19 +129,25 @@ public class LineController : MonoBehaviour
 
 ---
 
-## Known Issues & Limitations
+## Known Limitations
 
-* **Work in Progress**
+* **Work in Progress**: this package is actively developed. APIs and internal logic may change.
 
-  This package is actively developed. APIs and internal logic may change.
+* **2D UI Space Only**: mesh generation is designed specifically for the Canvas (XY plane).
 
-* **2D UI Space Only**
+* **Performance Trade-off**: implementation prioritizes visual quality over maximum performance, using polygons efficiently to achieve clean and smooth line rendering. Perfect for mostly static lines.
 
-  Mesh generation is designed specifically for the Canvas (XY plane).
+---
 
-* **Performance Trade-off**
+## Showcase
 
-  The implementation prioritizes visual quality over maximum performance, using polygons efficiently to achieve clean and smooth line rendering.
+### [Д.И.В.О.](https://games.kruzhok.org/games_library/338)
+
+This package was originally developed and actively used to build a **visual node editor** for this project.
+
+![Analyser](images/divo_analyser.png)
+
+> UILineDrawer is used to render connection lines between nodes and to handle interaction (click detection) on those lines.
 
 ---
 
