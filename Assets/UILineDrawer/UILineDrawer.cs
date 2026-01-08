@@ -1,5 +1,6 @@
 using System.Collections.Generic;
 using Unity.Mathematics;
+using UnityEditor;
 using UnityEngine;
 using UnityEngine.UI;
 
@@ -11,8 +12,8 @@ namespace Maro.UILineDrawer
         internal const int MinSubdivisions = 1;
         internal const int MaxSubdivisions = 9;
         internal const float MinThickness = 0.1f;
-        private const float MiterLimit = 2.0f;
-        
+        private const float MiterLimit = 1.0f;
+
         [SerializeField]
         private List<BezierKnot2D> m_Points = new();
 
@@ -44,29 +45,25 @@ namespace Maro.UILineDrawer
         public float RaycastExtraThickness
         {
             get => m_RaycastExtraThickness;
-            set { m_RaycastExtraThickness = Mathf.Max(value, 0); }
+            set => m_RaycastExtraThickness = Mathf.Max(value, 0);
         }
 
         public float RaycastStartOffset
         {
             get => m_RaycastStartOffset;
-            set { m_RaycastStartOffset = Mathf.Max(value, 0); }
+            set => m_RaycastStartOffset = Mathf.Max(value, 0);
         }
 
         public float RaycastEndOffset
         {
             get => m_RaycastEndOffset;
-            set { m_RaycastEndOffset = Mathf.Max(value, 0); }
+            set => m_RaycastEndOffset = Mathf.Max(value, 0);
         }
 
         public int Subdivisions
         {
             get => m_Subdivisions;
-            set
-            {
-                m_Subdivisions = Mathf.Clamp(value, MinSubdivisions, MaxSubdivisions);
-                UpdateSpline();
-            }
+            set => m_Subdivisions = Mathf.Clamp(value, MinSubdivisions, MaxSubdivisions);
         }
 
         private Spline2D m_Spline;
@@ -80,12 +77,31 @@ namespace Maro.UILineDrawer
         }
 
 #if UNITY_EDITOR
+        private bool _editorUpdateQueued;
+
         protected override void OnValidate()
         {
             base.OnValidate();
+
             CreateSpline();
             m_Thickness = Mathf.Max(m_Thickness, MinThickness);
             m_Subdivisions = Mathf.Clamp(m_Subdivisions, MinSubdivisions, MaxSubdivisions);
+
+            if (_editorUpdateQueued)
+                return;
+
+            _editorUpdateQueued = true;
+            EditorApplication.delayCall += DelayedUpdateSpline;
+        }
+
+        private void DelayedUpdateSpline()
+        {
+            _editorUpdateQueued = false;
+
+            if (this == null)
+                return;
+
+            UpdateSpline();
         }
 #endif
 
@@ -98,6 +114,16 @@ namespace Maro.UILineDrawer
         {
             m_Points.Add(point);
             UpdateSpline();
+        }
+
+        public void AddPoint(float2 point)
+        {
+            AddPoint(new BezierKnot2D(point));
+        }
+
+        public void AddPoint(float2 position, float2 tangentIn, float2 tangentOut, float rotation = 0)
+        {
+            AddPoint(new BezierKnot2D(position, tangentIn, tangentOut, rotation));
         }
 
         public void RemovePoint(int index)
@@ -140,17 +166,15 @@ namespace Maro.UILineDrawer
 
             var size = max - min;
 
-            // Avoid zero size (causes divide by zero issues)
-            size.x = math.max(size.x, 0.1f);
-            size.y = math.max(size.y, 0.1f);
+            size.x = math.max(size.x, MinThickness);
+            size.y = math.max(size.y, MinThickness);
 
             var newPivot = new Vector2(
                 -min.x / size.x,
                 -min.y / size.y
             );
 
-            if (math.abs(rectTransform.rect.width - size.x) > 0.01f ||
-                math.abs(rectTransform.rect.height - size.y) > 0.01f)
+            if (math.abs(rectTransform.rect.width - size.x) > 0.01f || math.abs(rectTransform.rect.height - size.y) > 0.01f)
             {
                 rectTransform.sizeDelta = new Vector2(size.x, size.y);
                 rectTransform.pivot = newPivot;

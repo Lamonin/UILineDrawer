@@ -31,9 +31,8 @@ namespace Maro.UILineDrawer
         public override VisualElement CreateInspectorGUI()
         {
             _root = new VisualElement();
-            UILineDrawer drawer = (UILineDrawer)target;
 
-            DrawPointsSection(drawer);
+            DrawPointsSection();
 
             AddPropertyField("m_Color");
             AddPropertyField("m_Thickness");
@@ -44,48 +43,60 @@ namespace Maro.UILineDrawer
             AddPropertyField("m_RaycastStartOffset");
             AddPropertyField("m_RaycastEndOffset");
 
-            _root.TrackSerializedObjectValue(serializedObject, _ => { if (target != null) ((UILineDrawer)target).Refresh(); });
-
             return _root;
         }
 
-        private void DrawPointsSection(UILineDrawer drawer)
+        private void DrawPointsSection()
         {
             _pointsFoldout = new Foldout { text = "Points", value = SessionState.GetBool(FoldoutStateKey, true) };
             _pointsFoldout.RegisterValueChangedCallback(evt => SessionState.SetBool(FoldoutStateKey, evt.newValue));
 
             var pointsProp = serializedObject.FindProperty("m_Points");
-            _arraySizeField = new IntegerField { value = pointsProp.arraySize, isDelayed = true, style = { width = 32, height = 16, position = Position.Absolute, right = 0, top = 0 } };
-            
+            _arraySizeField = new IntegerField
+            {
+                value = pointsProp.arraySize, isDelayed = true, style = { width = 32, height = 16, position = Position.Absolute, right = 0, top = 0 }
+            };
+
             var input = _arraySizeField.Q("unity-text-input");
-            if (input != null) { input.style.alignSelf = Align.FlexEnd; input.style.unityTextAlign = TextAnchor.MiddleRight; }
+            if (input != null)
+            {
+                input.style.alignSelf = Align.FlexEnd;
+                input.style.unityTextAlign = TextAnchor.MiddleRight;
+            }
 
             _arraySizeField.RegisterValueChangedCallback(evt =>
-            {
-                int newSize = Mathf.Max(0, evt.newValue);
-                serializedObject.FindProperty("m_Points").arraySize = newSize;
-                serializedObject.ApplyModifiedProperties();
-                RefreshPointsList();
-                drawer.Refresh();
-            });
+                {
+                    int newSize = Mathf.Max(0, evt.newValue);
+                    serializedObject.FindProperty("m_Points").arraySize = newSize;
+                    serializedObject.ApplyModifiedProperties();
+                    RefreshPointsList();
+                }
+            );
 
             var toggle = _pointsFoldout.Q<Toggle>();
-            if (toggle != null) { toggle.style.height = 16; toggle.Add(_arraySizeField); }
+            if (toggle != null)
+            {
+                toggle.style.height = 16;
+                toggle.Add(_arraySizeField);
+            }
 
             _pointsListContainer = new VisualElement();
             _pointsFoldout.contentContainer.Add(_pointsListContainer);
 
-            var paginationContainer = new VisualElement { style = { flexDirection = FlexDirection.Row, justifyContent = Justify.Center, marginTop = 10, marginBottom = 5 } };
+            var paginationContainer = new VisualElement
+                { style = { flexDirection = FlexDirection.Row, justifyContent = Justify.Center, marginTop = 10, marginBottom = 5 } };
             _prevButton = new Button(() => ChangePage(-1)) { text = "<", style = { width = 30 } };
             _nextButton = new Button(() => ChangePage(1)) { text = ">", style = { width = 30 } };
-            _pageLabel = new Label { style = { alignSelf = Align.Center, marginLeft = 10, marginRight = 10, minWidth = 60, unityTextAlign = TextAnchor.MiddleCenter } };
-            
+            _pageLabel = new Label
+                { style = { alignSelf = Align.Center, marginLeft = 10, marginRight = 10, minWidth = 60, unityTextAlign = TextAnchor.MiddleCenter } };
+
             paginationContainer.Add(_prevButton);
             paginationContainer.Add(_pageLabel);
             paginationContainer.Add(_nextButton);
             _pointsFoldout.contentContainer.Add(paginationContainer);
 
-            var addButton = new Button(() => OnAddPoint()) { text = "+ Add Point", style = { height = 25, marginTop = 5, marginBottom = 5, backgroundColor = new Color(0.25f, 0.35f, 0.25f) } };
+            var addButton = new Button(() => OnAddPoint())
+                { text = "+ Add Point", style = { height = 25, marginTop = 5, marginBottom = 5, backgroundColor = new Color(0.25f, 0.35f, 0.25f) } };
             _pointsFoldout.contentContainer.Add(addButton);
 
             RefreshPointsList();
@@ -121,13 +132,24 @@ namespace Maro.UILineDrawer
 
         private VisualElement CreatePointElement(int index, string propertyPath, int totalPoints)
         {
-            var pointFoldout = new Foldout { text = $"Point {index}", value = SessionState.GetBool(PointStateKey(index), false), style = { marginBottom = 2, marginLeft = 5 } };
+            var pointFoldout = new Foldout
+                { text = $"Point {index}", value = SessionState.GetBool(PointStateKey(index), false), style = { marginBottom = 2, marginLeft = 5 } };
             pointFoldout.RegisterValueChangedCallback(evt => SessionState.SetBool(PointStateKey(index), evt.newValue));
 
-            var actionsContainer = new VisualElement { style = { flexDirection = FlexDirection.Row, position = Position.Absolute, right = 5, top = 0 } };
+            var actionsContainer = new VisualElement
+                { style = { flexDirection = FlexDirection.Row, position = Position.Absolute, right = 5, top = 0 } };
+
             Button CreateHeaderBtn(string text, System.Action onClick, bool enabled = true)
             {
-                var btn = new Button(onClick) { text = text, style = { width = 20, height = 18, fontSize = 10, marginLeft = 0, marginRight = 2, paddingLeft = 0, paddingRight = 0, backgroundColor = new Color(0.22f, 0.22f, 0.22f) } };
+                var btn = new Button(onClick)
+                {
+                    text = text,
+                    style =
+                    {
+                        width = 20, height = 18, fontSize = 10, marginLeft = 0, marginRight = 2, paddingLeft = 0, paddingRight = 0,
+                        backgroundColor = new Color(0.22f, 0.22f, 0.22f)
+                    }
+                };
                 btn.SetEnabled(enabled);
                 btn.RegisterCallback<MouseUpEvent>(evt => evt.StopPropagation());
                 btn.RegisterCallback<MouseDownEvent>(evt => evt.StopPropagation());
@@ -163,8 +185,12 @@ namespace Maro.UILineDrawer
             return pointFoldout;
         }
 
-        private void ChangePage(int direction) { CurrentPage += direction; RefreshPointsList(); }
-        
+        private void ChangePage(int direction)
+        {
+            CurrentPage += direction;
+            RefreshPointsList();
+        }
+
         private void OnAddPoint()
         {
             SerializedProperty pointsProp = serializedObject.FindProperty("m_Points");
@@ -173,7 +199,6 @@ namespace Maro.UILineDrawer
             int totalPages = Mathf.CeilToInt((float)pointsProp.arraySize / ItemsPerPage);
             CurrentPage = totalPages - 1;
             RefreshPointsList();
-            ((UILineDrawer)target).Refresh();
         }
 
         private void OnRemovePoint(int index)
@@ -182,7 +207,6 @@ namespace Maro.UILineDrawer
             pointsProp.DeleteArrayElementAtIndex(index);
             serializedObject.ApplyModifiedProperties();
             RefreshPointsList();
-            ((UILineDrawer)target).Refresh();
         }
 
         private void OnMovePoint(int index, int direction)
@@ -198,7 +222,6 @@ namespace Maro.UILineDrawer
                 SessionState.SetBool(PointStateKey(index), stateB);
                 SessionState.SetBool(PointStateKey(newIndex), stateA);
                 RefreshPointsList();
-                ((UILineDrawer)target).Refresh();
             }
         }
 
