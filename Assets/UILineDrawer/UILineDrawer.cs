@@ -67,7 +67,6 @@ namespace Maro.UILineDrawer
         }
 
         private Spline2D m_Spline;
-        private VertexHelper vh;
         private List<float2> _optimizedPoints = new();
 
         protected override void OnEnable()
@@ -194,7 +193,7 @@ namespace Maro.UILineDrawer
                 return;
             }
 
-            _optimizedPoints = BezierUtility.GenerateOptimizedSplinePoints(m_Spline, m_Subdivisions);
+            BezierUtility.GenerateOptimizedSplinePoints(m_Spline, _optimizedPoints, m_Subdivisions);
 
             RecalculateBounds();
 
@@ -215,12 +214,11 @@ namespace Maro.UILineDrawer
 
         protected override void OnPopulateMesh(VertexHelper vh)
         {
-            this.vh ??= vh;
             vh.Clear();
-            CreateMesh();
+            CreateMesh(vh);
         }
 
-        private void CreateMesh()
+        private void CreateMesh(VertexHelper vh)
         {
             if (m_Spline == null || m_Spline.Count < 2 || _optimizedPoints.Count < 2 || m_Spline.GetLength() < m_Thickness)
                 return;
@@ -231,20 +229,20 @@ namespace Maro.UILineDrawer
             float2 current = _optimizedPoints[0];
             float2 next = _optimizedPoints[1];
 
-            BeginLineSegment(vertex, current, next, out var prevVertIndex);
+            BeginLineSegment(vh, vertex, current, next, out var prevVertIndex);
 
             for (int i = 0; i < _optimizedPoints.Count - 2; i++)
             {
                 var previous = _optimizedPoints[i];
                 current = _optimizedPoints[i + 1];
                 next = _optimizedPoints[i + 2];
-                AddJoint(vertex, previous, current, next, ref prevVertIndex);
+                AddJoint(vh, vertex, previous, current, next, ref prevVertIndex);
             }
 
-            EndLineSegment(vertex, current, next, prevVertIndex);
+            EndLineSegment(vh, vertex, current, next, prevVertIndex);
         }
 
-        private void BeginLineSegment(UIVertex vertex, float2 start, float2 next, out int currentVertIndex)
+        private void BeginLineSegment(VertexHelper vh, UIVertex vertex, float2 start, float2 next, out int currentVertIndex)
         {
             var direction = next - start;
             var normal = math.normalize(new float2(-direction.y, direction.x));
@@ -261,7 +259,7 @@ namespace Maro.UILineDrawer
             currentVertIndex = vh.currentVertCount - 2;
         }
 
-        private void AddJoint(UIVertex vertex, float2 previous, float2 current, float2 next, ref int prevVertIndex)
+        private void AddJoint(VertexHelper vh, UIVertex vertex, float2 previous, float2 current, float2 next, ref int prevVertIndex)
         {
             var d1 = math.normalize(current - previous);
             var d2 = math.normalize(next - current);
@@ -328,7 +326,7 @@ namespace Maro.UILineDrawer
             }
         }
 
-        private void EndLineSegment(UIVertex vertex, float2 previous, float2 end, int prevVertIndex)
+        private void EndLineSegment(VertexHelper vh, UIVertex vertex, float2 previous, float2 end, int prevVertIndex)
         {
             var dir = end - previous;
             var normal = math.normalize(new float2(-dir.y, dir.x));

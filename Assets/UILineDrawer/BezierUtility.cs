@@ -7,17 +7,23 @@ namespace Maro.UILineDrawer
     public static class BezierUtility
     {
         private const int MaxRecursionDepth = 16;
-        private const float BaseTolerance = 0.5f;
+        private const float BaseTolerance = 1f;
 
         /// <summary>
-        /// Generates a list of points representing the flattened spline.
+        /// Populates the provided buffer with points representing the flattened spline.
         /// </summary>
-        public static List<float2> GenerateOptimizedSplinePoints(Spline2D spline, int subdivisions = 1)
+        public static void GenerateOptimizedSplinePoints(Spline2D spline, List<float2> buffer, int subdivisions = 1)
         {
+            buffer.Clear();
+
             int curveCount = spline.GetCurveCount();
-            // Heuristic allocation
+            if (curveCount == 0) return;
+
             int estimatedPoints = curveCount * subdivisions * 8;
-            var points = new List<float2>(math.max(8, estimatedPoints));
+            if (buffer.Capacity < estimatedPoints)
+            {
+                buffer.Capacity = estimatedPoints;
+            }
 
             float tolerance = BaseTolerance / math.max(1, subdivisions);
             float toleranceSq = tolerance * tolerance;
@@ -26,10 +32,11 @@ namespace Maro.UILineDrawer
             {
                 var curve = spline.GetCurve(i);
 
-                if (i == 0) points.Add(curve.P0);
+                // Add the very first point of the spline
+                if (i == 0) buffer.Add(curve.P0);
 
                 RecursiveBezierFlatnessCheck(
-                    points,
+                    buffer,
                     curve.P0,
                     curve.P1,
                     curve.P2,
@@ -38,8 +45,6 @@ namespace Maro.UILineDrawer
                     0
                 );
             }
-
-            return points;
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -95,7 +100,6 @@ namespace Maro.UILineDrawer
 
         /// <summary>
         /// Finds the nearest point on the spline to the given world point.
-        /// Returns the distance squared and the normalized T (0 to 1) along the WHOLE spline.
         /// </summary>
         public static float GetNearestPoint(Spline2D spline, float2 point, out float2 nearestPosition, out float normalizedT)
         {
@@ -126,7 +130,7 @@ namespace Maro.UILineDrawer
         }
 
         // Iterative approximation for finding nearest point on a cubic bezier.
-        // Solves 5th degree polynomial via iterations (Gradient Descent style).
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private static void GetNearestPointOnCurve(BezierCurve2D curve, float2 p, out float t, out float2 pos, out float dstSq)
         {
             const int steps = 10;
@@ -145,9 +149,8 @@ namespace Maro.UILineDrawer
                 }
             }
 
-            // This is much faster/stable than Newton-Raphson for this specific use case
             float range = 1.0f / (2 * steps);
-            for (int i = 0; i < 4; i++) // 4 iterations of refinement
+            for (int i = 0; i < 4; i++)
             {
                 float t1 = math.clamp(t - range, 0, 1);
                 float t2 = math.clamp(t + range, 0, 1);
