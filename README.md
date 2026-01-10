@@ -11,9 +11,9 @@ UILineDrawer was developed and production-tested in the
 <details open>
     <summary>Line Example</summary>
 
-![Line Example](images/line.png)
+4 point spline with subdivision level 3
 
-> 4 point spline with subdivision level 3
+![Line Example](images/line.png)
 
 </details>
 
@@ -21,7 +21,6 @@ UILineDrawer was developed and production-tested in the
     <summary>Mesh Generation</summary>
 
 ![Line Mesh Example](images/mesh_example.gif)
-> Line mesh generation Example
 
 </details>
 
@@ -39,15 +38,17 @@ UILineDrawer was created to solve this limitation.
 
 ## Features
 
-* **Native Canvas Integration**: inherits from `MaskableGraphic`, ensuring full compatibility with Unity UI systems such as masking, layout, and batching.
+- **Made for Canvas**: the component is designed for simple and effective operation within the Unity Canvas environment.
 
-* **Precise Raycasting**: supports raycast detection **along the line itself**, with configurable extra thickness and start/end padding.
+- **Runtime API**: full C# API to add, remove, and modify spline points and visual properties at runtime.
 
-* **Spline-Based Rendering**: uses custom spline implementation to render smooth Bezier curves with controllable tangents.
+- **Mask Support**: full support for Rect2D and Mask masks.
 
-* **Mesh Optimization**: adjustable subdivision levels allow fine control over the balance between visual smoothness and vertex count.
+![Masks Example](images/mask_example.gif)
 
-* **Runtime API**: full C# API to add, remove, and modify spline points and visual properties at runtime.
+- **Raycast Support**: full raycast support.
+
+![Raycast Example](images/raycast_example.gif)
 
 ---
 
@@ -55,7 +56,7 @@ UILineDrawer was created to solve this limitation.
 
 This package depends on the following Unity packages:
 
-* **Mathematics** (`com.unity.mathematics`)
+- **Mathematics** (`com.unity.mathematics`)
 
 Make sure it installed via the Package Manager if they not installed automatically.
 
@@ -64,7 +65,7 @@ Make sure it installed via the Package Manager if they not installed automatical
 ## Installation
 
 ```
-https://github.com/Lamonin/UILineDrawer.git?path=/Assets/UILineDrawer/#0.2.1
+https://github.com/Lamonin/UILineDrawer.git?path=/Assets/UILineDrawer/#0.2.2
 ```
 
 1. Open **Window** → **Package Manager**.
@@ -99,14 +100,14 @@ public class LineController : MonoBehaviour
     void Start()
     {
         lineDrawer.AddPoint(new Vector2(-50, 0));
-        
+
         lineDrawer.AddPoint(
             position: new Vector2(0, 50),
             tangentIn: new Vector2(-25, 0),
             tangentOut: new Vector2(25, 0),
             rotation: 0
         );
-        
+
         lineDrawer.AddPoint(new Vector2(50, 0));
 
         lineDrawer.Thickness = 10f;
@@ -131,11 +132,11 @@ public class LineController : MonoBehaviour
 
 ## Known Limitations
 
-* **Work in Progress**: this package is actively developed. APIs and internal logic may change.
+- **Work in Progress**: this package is actively developed. APIs and internal logic may change.
 
-* **2D UI Space Only**: mesh generation is designed specifically for the Canvas (XY plane).
+- **2D UI Space Only**: the component is designed specifically for the Canvas (XY plane).
 
-* **Performance Trade-off**: implementation prioritizes visual quality over maximum performance, using polygons efficiently to achieve clean and smooth line rendering. Perfect for mostly static lines.
+- **Performance Trade-off**: implementation prioritizes visual quality, mask and raycast support over maximum performance, using polygons efficiently to achieve clean and smooth line rendering. Perfect for mostly static lines.
 
 ---
 
