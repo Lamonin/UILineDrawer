@@ -174,6 +174,13 @@ namespace Maro.UILineDrawer
             SetDirty();
         }
 
+        public float GetNormalizedPosition(Vector2 point, int resolution = 10, int iterations = 5)
+        {
+            EnsureValidSpline();
+            m_Spline.GetClosestPoint(point, out var t, resolution, iterations);
+            return t;
+        }
+
         public override bool Raycast(Vector2 sp, Camera camera)
         {
             EnsureValidSpline();
@@ -181,9 +188,10 @@ namespace Maro.UILineDrawer
             if (m_Spline == null || m_Spline.Count < 2) return false;
 
             RectTransformUtility.ScreenPointToLocalPointInRectangle(rectTransform, sp, camera, out Vector2 localPoint);
-            var point = new float2(localPoint.x, localPoint.y);
 
-            float distance = BezierUtility.GetNearestPoint(m_Spline, point, out _, out var t);
+            var point = new float2(localPoint.x, localPoint.y);
+            var pointOnSpline = m_Spline.GetClosestPoint(point, out var t);
+            var distance = math.distance(point, pointOnSpline);
 
             if (distance < m_Thickness + m_RaycastExtraThickness)
             {

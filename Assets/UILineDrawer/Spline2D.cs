@@ -1,5 +1,6 @@
 using System.Collections.Generic;
 using Unity.Mathematics;
+using UnityEngine;
 
 namespace Maro.UILineDrawer
 {
@@ -201,6 +202,88 @@ namespace Maro.UILineDrawer
             }
 
             return m_CachedLength;
+        }
+
+        /// <summary>
+        /// Finds the closest point on the spline to the specified target position.
+        /// </summary>
+        public Vector2 GetClosestPoint(Vector2 point, int resolution = 10, int iterations = 5)
+        {
+            return GetClosestPoint(point, out _, resolution, iterations);
+        }
+
+        /// <summary>
+        /// Finds the closest point on the spline to the specified target position and returns the position and normalized global t value via out parameters.
+        /// </summary>
+        public Vector2 GetClosestPoint(Vector2 point, out float normalizedT, int resolution = 10, int iterations = 5)
+        {
+            EnsureCurveCache();
+
+            if (m_CachedCurves.Count == 0)
+            {
+                normalizedT = 0f;
+                return default;
+            }
+
+            float minSqDist = float.MaxValue;
+            int bestCurveIndex = 0;
+            float bestCurveT = 0f;
+            float2 bestPos = float2.zero;
+
+            int curveCount = m_CachedCurves.Count;
+
+            for (int i = 0; i < curveCount; i++)
+            {
+                var curve = m_CachedCurves[i];
+
+                for (int s = 0; s <= resolution; s++)
+                {
+                    float t = (float)s / resolution;
+                    float2 pos = curve.Evaluate(t);
+                    float sqDist = math.distancesq(point, pos);
+
+                    if (sqDist < minSqDist)
+                    {
+                        minSqDist = sqDist;
+                        bestCurveIndex = i;
+                        bestCurveT = t;
+                        bestPos = pos;
+                    }
+                }
+            }
+
+            var bestCurve = m_CachedCurves[bestCurveIndex];
+            float stepSize = 1.0f / resolution;
+
+            for (int i = 0; i < iterations; i++)
+            {
+                stepSize *= 0.5f;
+
+                float tNeg = math.saturate(bestCurveT - stepSize);
+                float tPos = math.saturate(bestCurveT + stepSize);
+
+                float2 posNeg = bestCurve.Evaluate(tNeg);
+                float2 posPos = bestCurve.Evaluate(tPos);
+
+                float sqDistNeg = math.distancesq(point, posNeg);
+                float sqDistPos = math.distancesq(point, posPos);
+
+                if (sqDistNeg < minSqDist)
+                {
+                    minSqDist = sqDistNeg;
+                    bestCurveT = tNeg;
+                    bestPos = posNeg;
+                }
+                else if (sqDistPos < minSqDist)
+                {
+                    minSqDist = sqDistPos;
+                    bestCurveT = tPos;
+                    bestPos = posPos;
+                }
+            }
+
+            normalizedT = (bestCurveIndex + bestCurveT) / curveCount;
+            return bestPos;
         }
     }
 }
