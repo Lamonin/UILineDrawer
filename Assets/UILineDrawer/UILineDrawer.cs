@@ -1,12 +1,12 @@
 using System.Collections.Generic;
 using Unity.Mathematics;
-using UnityEditor;
 using UnityEngine;
 using UnityEngine.UI;
 
 namespace Maro.UILineDrawer
 {
     [RequireComponent(typeof(CanvasRenderer))]
+    [ExecuteAlways]
     public class UILineDrawer : MaskableGraphic
     {
         internal const int MinSubdivisions = 1;
@@ -32,126 +32,77 @@ namespace Maro.UILineDrawer
         [SerializeField]
         private int m_Subdivisions = MinSubdivisions;
 
+        private readonly Spline2D m_Spline = new Spline2D();
+        private readonly List<float2> _optimizedPoints = new();
+        private bool _isDirty;
+
         public float Thickness
         {
             get => m_Thickness;
             set
             {
+                if (Mathf.Approximately(m_Thickness, value)) return;
                 m_Thickness = Mathf.Max(value, MinThickness);
-                SetVerticesDirty();
+                SetDirty();
             }
         }
 
         public float RaycastExtraThickness
         {
             get => m_RaycastExtraThickness;
-            set => m_RaycastExtraThickness = Mathf.Max(value, 0);
-        }
-
-        public float RaycastStartOffset
-        {
-            get => m_RaycastStartOffset;
-            set => m_RaycastStartOffset = Mathf.Max(value, 0);
-        }
-
-        public float RaycastEndOffset
-        {
-            get => m_RaycastEndOffset;
-            set => m_RaycastEndOffset = Mathf.Max(value, 0);
+            set { m_RaycastExtraThickness = Mathf.Max(value, 0); }
         }
 
         public int Subdivisions
         {
             get => m_Subdivisions;
-            set => m_Subdivisions = Mathf.Clamp(value, MinSubdivisions, MaxSubdivisions);
+            set
+            {
+                int val = Mathf.Clamp(value, MinSubdivisions, MaxSubdivisions);
+                if (m_Subdivisions == val) return;
+                m_Subdivisions = val;
+                SetDirty();
+            }
         }
-
-        private Spline2D m_Spline;
-        private List<float2> _optimizedPoints = new();
 
         protected override void OnEnable()
         {
             base.OnEnable();
-            if (Application.isPlaying) CreateSpline();
+            SetDirty();
         }
 
 #if UNITY_EDITOR
-        private bool _editorUpdateQueued;
-
         protected override void OnValidate()
         {
             base.OnValidate();
 
-            CreateSpline();
             m_Thickness = Mathf.Max(m_Thickness, MinThickness);
             m_Subdivisions = Mathf.Clamp(m_Subdivisions, MinSubdivisions, MaxSubdivisions);
 
-            if (_editorUpdateQueued)
-                return;
-
-            _editorUpdateQueued = true;
-            EditorApplication.delayCall += DelayedUpdateSpline;
-        }
-
-        private void DelayedUpdateSpline()
-        {
-            _editorUpdateQueued = false;
-
-            if (this == null)
-                return;
-
-            UpdateSpline();
+            SetDirty();
         }
 #endif
 
-        private void CreateSpline()
+        private void SetDirty()
         {
-            m_Spline ??= new Spline2D();
+            _isDirty = true;
         }
 
-        public void AddPoint(BezierKnot2D point)
+        protected virtual void Update()
         {
-            m_Points.Add(point);
-            UpdateSpline();
-        }
-
-        public void AddPoint(float2 point)
-        {
-            AddPoint(new BezierKnot2D(point));
-        }
-
-        public void AddPoint(float2 position, float2 tangentIn, float2 tangentOut, float rotation = 0)
-        {
-            AddPoint(new BezierKnot2D(position, tangentIn, tangentOut, rotation));
-        }
-
-        public void RemovePoint(int index)
-        {
-            if (index < 0 || index >= m_Points.Count) return;
-            m_Points.RemoveAt(index);
-            UpdateSpline();
-        }
-
-        public void UpdatePoint(int index, BezierKnot2D newPoint)
-        {
-            if (index < 0 || index >= m_Points.Count) return;
-            m_Points[index] = newPoint;
-            UpdateSpline();
-        }
-
-        public void UpdatePoints(BezierKnot2D[] points)
-        {
-            m_Points.Clear();
-            m_Points.AddRange(points);
-            UpdateSpline();
+            if (_isDirty)
+            {
+                UpdateSplineLogic();
+                _isDirty = false;
+            }
         }
 
         private void RecalculateBounds()
         {
             if (_optimizedPoints.Count == 0) return;
 
-            var min = new float2(0, 0);
-            var max = new float2(0, 0);
+            var min = new float2(float.MaxValue);
+            var max = new float2(float.MinValue);
 
             foreach (var p in _optimizedPoints)
             {
@@ -164,52 +115,86 @@ namespace Maro.UILineDrawer
             max += padding;
 
             var size = max - min;
+            size = math.max(size, new float2(MinThickness));
 
-            size.x = math.max(size.x, MinThickness);
-            size.y = math.max(size.y, MinThickness);
+            var newPivot = new Vector2(-min.x / size.x, -min.y / size.y);
 
-            var newPivot = new Vector2(
-                -min.x / size.x,
-                -min.y / size.y
-            );
-
-            if (math.abs(rectTransform.rect.width - size.x) > 0.01f || math.abs(rectTransform.rect.height - size.y) > 0.01f)
-            {
-                rectTransform.sizeDelta = new Vector2(size.x, size.y);
-                rectTransform.pivot = newPivot;
-            }
+            rectTransform.sizeDelta = new Vector2(size.x, size.y);
+            rectTransform.pivot = newPivot;
         }
 
-        private void UpdateSpline()
+        private void UpdateSplineLogic()
         {
-            if (m_Spline == null) return;
-
             m_Spline.SetKnots(m_Points);
 
             if (m_Points.Count == 0)
             {
                 _optimizedPoints.Clear();
-                SetVerticesDirty();
                 return;
             }
 
             BezierUtility.GenerateOptimizedSplinePoints(m_Spline, _optimizedPoints, m_Subdivisions);
-
             RecalculateBounds();
-
             SetVerticesDirty();
         }
 
-        [ContextMenu("Refresh")]
-        public void Refresh()
+        private void EnsureValidSpline()
         {
-            UpdateSpline();
+            if (_isDirty)
+            {
+                UpdateSplineLogic();
+                _isDirty = false;
+            }
         }
 
-        public float GetNearestNormalizedPosition(float2 point)
+        public void AddPoint(BezierKnot2D point)
         {
-            BezierUtility.GetNearestPoint(m_Spline, point, out _, out var t);
-            return t;
+            m_Points.Add(point);
+            SetDirty();
+        }
+
+        public void RemovePoint(int index)
+        {
+            if (index < 0 || index >= m_Points.Count) return;
+            m_Points.RemoveAt(index);
+            SetDirty();
+        }
+
+        public void UpdatePoint(int index, BezierKnot2D newPoint)
+        {
+            if (index < 0 || index >= m_Points.Count) return;
+            m_Points[index] = newPoint;
+            SetDirty();
+        }
+
+        public void UpdatePoints(IEnumerable<BezierKnot2D> points)
+        {
+            m_Points.Clear();
+            m_Points.AddRange(points);
+            SetDirty();
+        }
+
+        public override bool Raycast(Vector2 sp, Camera camera)
+        {
+            EnsureValidSpline();
+
+            if (m_Spline == null || m_Spline.Count < 2) return false;
+
+            RectTransformUtility.ScreenPointToLocalPointInRectangle(rectTransform, sp, camera, out Vector2 localPoint);
+            var point = new float2(localPoint.x, localPoint.y);
+
+            float distance = BezierUtility.GetNearestPoint(m_Spline, point, out _, out var t);
+
+            if (distance < m_Thickness + m_RaycastExtraThickness)
+            {
+                var splineLength = m_Spline.GetLength();
+                var pointPosition = t * splineLength;
+
+                return !(pointPosition < m_RaycastStartOffset)
+                       && !(pointPosition > splineLength - m_RaycastEndOffset);
+            }
+
+            return false;
         }
 
         protected override void OnPopulateMesh(VertexHelper vh)
@@ -280,7 +265,6 @@ namespace Maro.UILineDrawer
 
             if (math.abs(miterLength) > m_Thickness * MiterLimit)
             {
-                // Bevel
                 var perp1 = n1 * (m_Thickness / 2);
                 vertex.position = new float3(current + perp1, 0);
                 vertex.uv0 = new Vector2(0, 1);
@@ -309,7 +293,6 @@ namespace Maro.UILineDrawer
             }
             else
             {
-                // Miter
                 var miterVec = miter * miterLength;
                 vertex.position = new float3(current + miterVec, 0);
                 vertex.uv0 = new Vector2(0, 1);
@@ -342,25 +325,6 @@ namespace Maro.UILineDrawer
             int currentIndex = vh.currentVertCount - 2;
             vh.AddTriangle(prevVertIndex, currentIndex, prevVertIndex + 1);
             vh.AddTriangle(prevVertIndex + 1, currentIndex, currentIndex + 1);
-        }
-
-        public override bool Raycast(Vector2 sp, Camera camera)
-        {
-            RectTransformUtility.ScreenPointToLocalPointInRectangle(rectTransform, sp, camera, out Vector2 localPoint);
-            var point = new float2(localPoint.x, localPoint.y);
-
-            float distance = BezierUtility.GetNearestPoint(m_Spline, point, out _, out var t);
-
-            if (distance < m_Thickness + m_RaycastExtraThickness)
-            {
-                var splineLength = m_Spline.GetLength();
-                var pointPosition = t * splineLength;
-
-                return !(pointPosition < m_RaycastStartOffset)
-                       && !(pointPosition > splineLength - m_RaycastEndOffset);
-            }
-
-            return false;
         }
     }
 }
