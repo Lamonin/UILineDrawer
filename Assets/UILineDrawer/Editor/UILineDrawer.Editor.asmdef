@@ -2,7 +2,8 @@
     "name": "UILineDrawer.Editor",
     "rootNamespace": "UILineDrawer",
     "references": [
-        "GUID:63e5c9efca8a5c943b4c4dc03f75b6bc"
+        "GUID:63e5c9efca8a5c943b4c4dc03f75b6bc",
+        "GUID:d8b63aba1907145bea998dd612889d6b"
     ],
     "includePlatforms": [
         "Editor"
