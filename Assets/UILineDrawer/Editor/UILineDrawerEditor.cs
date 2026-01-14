@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using UnityEditor;
 using UnityEditor.UIElements;
 using UnityEngine;
@@ -10,7 +11,6 @@ namespace Maro.UILineDrawer
     {
         private UILineDrawer _target;
         private Transform _transform;
-        private int _previousArraySize;
 
         private const string ShowGizmosKey = "Maro.UILineDrawer.ShowGizmos";
 
@@ -19,7 +19,6 @@ namespace Maro.UILineDrawer
         private const float ZeroTangentOffset = 0.2f;
         private const float ZeroTangentSizeFactor = 0.6f;
         private const float LineThickness = 2.0f;
-        private readonly Vector2 _newPointOffset = new Vector2(1f, 1f);
 
         private readonly Color _lineColor = Color.cyan;
         private readonly Color _positionColor = Color.yellow;
@@ -31,9 +30,6 @@ namespace Maro.UILineDrawer
         {
             _target = (UILineDrawer)target;
             _transform = _target.transform;
-
-            var pointsProp = serializedObject.FindProperty("m_Points");
-            _previousArraySize = pointsProp?.arraySize ?? 0;
         }
 
         public override VisualElement CreateInspectorGUI()
@@ -41,31 +37,68 @@ namespace Maro.UILineDrawer
             var root = new VisualElement();
 
             var pointsProp = serializedObject.FindProperty("m_Points");
-            var pointsField = new PropertyField(pointsProp);
-
-            var colorField = new PropertyField(serializedObject.FindProperty("m_Color"));
-            var thicknessField = new PropertyField(serializedObject.FindProperty("m_Thickness"));
-            var subdivisionsField = new PropertyField(serializedObject.FindProperty("m_Subdivisions"));
-
+            var colorProp = serializedObject.FindProperty("m_Color");
+            var useGradientProp = serializedObject.FindProperty("m_UseGradient");
+            var gradientProp = serializedObject.FindProperty("m_Gradient");
+            var spriteProp = serializedObject.FindProperty("m_Sprite");
+            var tilingProp = serializedObject.FindProperty("m_Tiling");
+            var materialProp = serializedObject.FindProperty("m_Material");
+            var thicknessProp = serializedObject.FindProperty("m_Thickness");
+            var subdivisionsProp = serializedObject.FindProperty("m_Subdivisions");
             var raycastTargetProp = serializedObject.FindProperty("m_RaycastTarget");
-            var raycastTargetField = new PropertyField(raycastTargetProp);
+            var maskableProp = serializedObject.FindProperty("m_Maskable");
 
-            var raycastOptionsContainer = new VisualElement();
-            raycastOptionsContainer.style.paddingLeft = 15;
+            root.Add(CreateHeader("Path Configuration", 0, 2));
+            root.Add(new PropertyField(pointsProp));
+            root.Add(new PropertyField(thicknessProp));
+            root.Add(new PropertyField(subdivisionsProp));
 
-            var raycastExtraThicknessField =
-                new PropertyField(serializedObject.FindProperty("m_RaycastExtraThickness"));
-            var raycastStartOffsetField = new PropertyField(serializedObject.FindProperty("m_RaycastStartOffset"));
-            var raycastEndOffsetField = new PropertyField(serializedObject.FindProperty("m_RaycastEndOffset"));
+            root.Add(CreateHeader("Appearance", 4, 2));
 
-            var maskableField = new PropertyField(serializedObject.FindProperty("m_Maskable"));
+            var colorContainer = new VisualElement();
+            var colorModeDropdown = new DropdownField(
+                "Color Mode",
+                new List<string> { "Solid Color", "Gradient" },
+                useGradientProp.boolValue ? 1 : 0
+            );
+            colorModeDropdown.AddToClassList(DropdownField.alignedFieldUssClassName);
 
-            var spacer = new VisualElement { style = { height = 15 } };
-            var divider = new VisualElement
-                { style = { height = 1, backgroundColor = new Color(0.5f, 0.5f, 0.5f, 0.5f) } };
-            var bottomSpacer = new VisualElement { style = { height = 10 } };
+            var solidColorField = new PropertyField(colorProp) { label = "Color" };
+            var gradientField = new PropertyField(gradientProp) { label = "Gradient" };
 
-            var gizmoBtn = new Button();
+            colorContainer.Add(colorModeDropdown);
+            colorContainer.Add(solidColorField);
+            colorContainer.Add(gradientField);
+            root.Add(colorContainer);
+            root.Add(new PropertyField(materialProp));
+            root.Add(new PropertyField(spriteProp));
+            root.Add(new PropertyField(tilingProp));
+
+            UpdateColorMode(useGradientProp.boolValue ? "Gradient" : "Solid Color");
+            colorModeDropdown.RegisterValueChangedCallback(evt => UpdateColorMode(evt.newValue));
+
+            root.Add(CreateHeader("Interaction", 4, 2));
+            root.Add(new PropertyField(raycastTargetProp));
+
+            var raycastOptionsContainer = new VisualElement { style = { paddingLeft = 15 } };
+            raycastOptionsContainer.Add(new PropertyField(serializedObject.FindProperty("m_RaycastExtraThickness")));
+            raycastOptionsContainer.Add(new PropertyField(serializedObject.FindProperty("m_RaycastStartOffset")));
+            raycastOptionsContainer.Add(new PropertyField(serializedObject.FindProperty("m_RaycastEndOffset")));
+            root.Add(raycastOptionsContainer);
+            root.Add(new PropertyField(maskableProp));
+
+            ToggleRaycastOptions(raycastTargetProp.boolValue);
+            root.TrackPropertyValue(raycastTargetProp, prop => ToggleRaycastOptions(prop.boolValue));
+
+            root.Add(new VisualElement
+            {
+                style =
+                {
+                    height = 1, marginTop = 4, marginBottom = 4, backgroundColor = new Color(0.5f, 0.5f, 0.5f, 0.5f)
+                }
+            });
+
+            var gizmoBtn = new Button { style = { height = 25 } };
             var helpBox = new HelpBox(
                 "Controls:\n" +
                 "• Drag Point: Move Position\n" +
@@ -73,62 +106,10 @@ namespace Maro.UILineDrawer
                 "• Hold SHIFT + Drag: Edit Tangents",
                 HelpBoxMessageType.Info);
 
-            root.Add(pointsField);
-            root.Add(colorField);
-            root.Add(thicknessField);
-            root.Add(subdivisionsField);
-            root.Add(raycastTargetField);
-
-            raycastOptionsContainer.Add(raycastExtraThicknessField);
-            raycastOptionsContainer.Add(raycastStartOffsetField);
-            raycastOptionsContainer.Add(raycastEndOffsetField);
-
-            root.Add(raycastOptionsContainer);
-            root.Add(maskableField);
-            root.Add(spacer);
-            root.Add(divider);
-            root.Add(bottomSpacer);
             root.Add(gizmoBtn);
             root.Add(helpBox);
 
-            ToggleRaycastOptions(raycastTargetProp.boolValue);
             UpdateButtonState();
-
-            root.TrackPropertyValue(pointsProp, prop =>
-            {
-                if (prop.arraySize > _previousArraySize)
-                {
-                    for (var i = _previousArraySize; i < prop.arraySize; i++)
-                    {
-                        if (i > 0)
-                        {
-                            var prevElement = prop.GetArrayElementAtIndex(i - 1);
-                            var newElement = prop.GetArrayElementAtIndex(i);
-
-                            var prevPosProp = prevElement.FindPropertyRelative("Position");
-                            var newPosProp = newElement.FindPropertyRelative("Position");
-
-                            var prevPos = GetFloat2(prevPosProp);
-                            var newPos = GetFloat2(newPosProp);
-
-                            if (prevPos == newPos)
-                            {
-                                SetFloat2(newPosProp, prevPos + _newPointOffset);
-                            }
-                        }
-                    }
-
-                    serializedObject.ApplyModifiedProperties();
-                }
-
-                _previousArraySize = prop.arraySize;
-
-                serializedObject.ApplyModifiedProperties();
-                EditorUtility.SetDirty(target);
-            });
-
-            root.TrackPropertyValue(raycastTargetProp, (prop) => { ToggleRaycastOptions(prop.boolValue); });
-
             gizmoBtn.clicked += () =>
             {
                 var currentState = SessionState.GetBool(ShowGizmosKey, true);
@@ -142,13 +123,11 @@ namespace Maro.UILineDrawer
             void UpdateButtonState()
             {
                 var areGizmosVisible = SessionState.GetBool(ShowGizmosKey, true);
-
                 if (areGizmosVisible)
                 {
                     gizmoBtn.text = "Hide Gizmos";
                     gizmoBtn.style.backgroundColor = new Color(0.8f, 0.2f, 0.2f, 1f);
                     gizmoBtn.style.color = Color.white;
-                    helpBox.visible = true;
                     helpBox.style.display = DisplayStyle.Flex;
                 }
                 else
@@ -156,7 +135,6 @@ namespace Maro.UILineDrawer
                     gizmoBtn.text = "Show Gizmos";
                     gizmoBtn.style.backgroundColor = new Color(0.2f, 0.6f, 0.2f, 1f);
                     gizmoBtn.style.color = Color.white;
-                    helpBox.visible = false;
                     helpBox.style.display = DisplayStyle.None;
                 }
             }
@@ -165,6 +143,32 @@ namespace Maro.UILineDrawer
             {
                 raycastOptionsContainer.style.display = isEnabled ? DisplayStyle.Flex : DisplayStyle.None;
             }
+
+            void UpdateColorMode(string mode)
+            {
+                bool isGradient = mode == "Gradient";
+                if (useGradientProp.boolValue != isGradient)
+                {
+                    useGradientProp.boolValue = isGradient;
+                    serializedObject.ApplyModifiedProperties();
+                }
+
+                solidColorField.style.display = isGradient ? DisplayStyle.None : DisplayStyle.Flex;
+                gradientField.style.display = isGradient ? DisplayStyle.Flex : DisplayStyle.None;
+            }
+        }
+
+        private static Label CreateHeader(string text, float mt = 0, float mb = 0)
+        {
+            return new Label(text)
+            {
+                style =
+                {
+                    unityFontStyleAndWeight = FontStyle.Bold,
+                    marginTop = mt,
+                    marginBottom = mb,
+                }
+            };
         }
 
         private void OnSceneGUI()

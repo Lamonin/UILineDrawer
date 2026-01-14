@@ -1,6 +1,7 @@
 using System.Collections.Generic;
 using Unity.Mathematics;
 using UnityEngine;
+using UnityEngine.Sprites;
 using UnityEngine.UI;
 
 namespace Maro.UILineDrawer
@@ -9,10 +10,12 @@ namespace Maro.UILineDrawer
     [ExecuteAlways]
     public class UILineDrawer : MaskableGraphic
     {
-        internal const int MinSubdivisions = 1;
-        internal const int MaxSubdivisions = 9;
-        internal const float MinThickness = 0.1f;
+        private const int MinSubdivisions = 1;
+        private const int MaxSubdivisions = 9;
+        private const float MinThickness = 0.1f;
+        private const float MinTiling = 0.01f;
         private const float MiterLimit = 1.0f;
+        private const float TilingFactor = 0.2f;
 
         [SerializeField]
         private List<BezierKnot2D> m_Points = new List<BezierKnot2D>()
@@ -20,6 +23,18 @@ namespace Maro.UILineDrawer
             new BezierKnot2D(new float2(-50, 0)),
             new BezierKnot2D(new float2(50, 0))
         };
+
+        [SerializeField]
+        private Sprite m_Sprite;
+
+        [SerializeField]
+        private float m_Tiling = 1.0f;
+
+        [SerializeField]
+        private bool m_UseGradient = false;
+
+        [SerializeField]
+        private Gradient m_Gradient = new Gradient();
 
         [SerializeField]
         private float m_Thickness = 5;
@@ -36,7 +51,7 @@ namespace Maro.UILineDrawer
         [SerializeField]
         private int m_Subdivisions = MinSubdivisions;
 
-        private readonly Spline2D m_Spline = new Spline2D();
+        private readonly Spline2D _spline = new Spline2D();
         private readonly List<float2> _optimizedPoints = new();
         private bool _isDirty;
 
@@ -47,6 +62,38 @@ namespace Maro.UILineDrawer
             {
                 if (Mathf.Approximately(m_Thickness, value)) return;
                 m_Thickness = Mathf.Max(value, MinThickness);
+                SetDirty();
+            }
+        }
+
+        public float Tiling
+        {
+            get => m_Tiling;
+            set
+            {
+                if (Mathf.Approximately(m_Tiling, value)) return;
+                m_Tiling = Mathf.Max(value, MinTiling);
+                SetDirty();
+            }
+        }
+
+        public bool UseGradient
+        {
+            get => m_UseGradient;
+            set
+            {
+                if (m_UseGradient == value) return;
+                m_UseGradient = value;
+                SetDirty();
+            }
+        }
+
+        public Gradient Gradient
+        {
+            get => m_Gradient;
+            set
+            {
+                m_Gradient = value;
                 SetDirty();
             }
         }
@@ -69,6 +116,32 @@ namespace Maro.UILineDrawer
             }
         }
 
+        public Sprite Sprite
+        {
+            get => m_Sprite;
+            set
+            {
+                if (m_Sprite == value) return;
+                m_Sprite = value;
+                SetDirty();
+                SetMaterialDirty();
+            }
+        }
+
+        public override Texture mainTexture
+        {
+            get
+            {
+                if (material != null && material.mainTexture != null)
+                    return material.mainTexture;
+
+                if (m_Sprite != null)
+                    return m_Sprite.texture;
+
+                return s_WhiteTexture;
+            }
+        }
+
         protected override void OnEnable()
         {
             base.OnEnable();
@@ -82,6 +155,7 @@ namespace Maro.UILineDrawer
 
             m_Thickness = Mathf.Max(m_Thickness, MinThickness);
             m_Subdivisions = Mathf.Clamp(m_Subdivisions, MinSubdivisions, MaxSubdivisions);
+            m_Tiling = Mathf.Max(m_Tiling, MinTiling);
 
             SetDirty();
         }
@@ -92,7 +166,7 @@ namespace Maro.UILineDrawer
             _isDirty = true;
         }
 
-        protected virtual void Update()
+        private void Update()
         {
             if (_isDirty)
             {
@@ -134,7 +208,7 @@ namespace Maro.UILineDrawer
 
         private void UpdateSplineLogic()
         {
-            m_Spline.SetKnots(m_Points);
+            _spline.SetKnots(m_Points);
 
             if (m_Points.Count == 0)
             {
@@ -142,7 +216,7 @@ namespace Maro.UILineDrawer
                 return;
             }
 
-            BezierUtility.GenerateOptimizedSplinePoints(m_Spline, _optimizedPoints, m_Subdivisions);
+            BezierUtility.GenerateOptimizedSplinePoints(_spline, _optimizedPoints, m_Subdivisions);
             RecalculateBounds();
             SetVerticesDirty();
         }
@@ -186,7 +260,7 @@ namespace Maro.UILineDrawer
         public float GetNormalizedPosition(Vector2 point, int resolution = 10, int iterations = 5)
         {
             EnsureValidSpline();
-            m_Spline.GetClosestPoint(point, out var t, resolution, iterations);
+            _spline.GetClosestPoint(point, out var t, resolution, iterations);
             return t;
         }
 
@@ -194,17 +268,17 @@ namespace Maro.UILineDrawer
         {
             EnsureValidSpline();
 
-            if (m_Spline.Count < 2) return false;
+            if (_spline.Count < 2) return false;
 
             RectTransformUtility.ScreenPointToLocalPointInRectangle(rectTransform, sp, camera, out Vector2 localPoint);
 
             var point = new float2(localPoint.x, localPoint.y);
-            var pointOnSpline = m_Spline.GetClosestPoint(point, out var t);
+            var pointOnSpline = _spline.GetClosestPoint(point, out var t);
             var distance = math.distance(point, pointOnSpline);
 
             if (distance < m_Thickness + m_RaycastExtraThickness)
             {
-                var splineLength = m_Spline.GetLength();
+                var splineLength = _spline.GetLength();
                 var pointPosition = t * splineLength;
 
                 return !(pointPosition < m_RaycastStartOffset)
@@ -222,42 +296,70 @@ namespace Maro.UILineDrawer
 
         private void CreateMesh(VertexHelper vh)
         {
-            if (m_Spline.Count < 2 || _optimizedPoints.Count < 2 || m_Spline.GetLength() < m_Thickness)
+            float totalLength = _spline.GetLength();
+
+            if (_spline.Count < 2 || _optimizedPoints.Count < 2 || totalLength < m_Thickness)
                 return;
 
             UIVertex vertex = UIVertex.simpleVert;
-            vertex.color = color;
+            Color baseColor = color;
 
+            if (totalLength <= 0) totalLength = 1f;
+
+            Vector4 uvBounds = (m_Sprite != null)
+                ? DataUtility.GetOuterUV(m_Sprite)
+                : new Vector4(0, 0, 1, 1);
+
+            float currentDistance = 0f;
             float2 current = _optimizedPoints[0];
             float2 next = _optimizedPoints[1];
 
-            BeginLineSegment(vh, vertex, current, next, out var prevVertIndex);
+            Color startColor = m_UseGradient ? m_Gradient.Evaluate(0f) : baseColor;
+
+            float startU = uvBounds.x + (currentDistance * m_Tiling * TilingFactor);
+
+            BeginLineSegment(vh, vertex, current, next, startU, uvBounds, startColor, out var prevVertIndex);
 
             for (int i = 0; i < _optimizedPoints.Count - 2; i++)
             {
                 var previous = _optimizedPoints[i];
                 current = _optimizedPoints[i + 1];
                 next = _optimizedPoints[i + 2];
-                AddJoint(vh, vertex, previous, current, next, ref prevVertIndex);
+
+                currentDistance += math.distance(previous, current);
+
+                float u = uvBounds.x + (currentDistance * m_Tiling * TilingFactor);
+                float t = currentDistance / totalLength;
+                Color currentColor = m_UseGradient ? m_Gradient.Evaluate(t) : baseColor;
+
+                AddJoint(vh, vertex, previous, current, next, u, uvBounds, currentColor, ref prevVertIndex);
             }
 
-            EndLineSegment(vh, vertex, current, next, prevVertIndex);
+            currentDistance += math.distance(current, next);
+
+            Color endColor = m_UseGradient ? m_Gradient.Evaluate(1f) : baseColor;
+            float endU = uvBounds.x + (currentDistance * m_Tiling * TilingFactor);
+
+            EndLineSegment(vh, vertex, current, next, endU, uvBounds, endColor, prevVertIndex);
         }
 
         private void BeginLineSegment(
-            VertexHelper vh, UIVertex vertex, float2 start, float2 next, out int currentVertIndex
+            VertexHelper vh, UIVertex vertex, float2 start, float2 next, float u, Vector4 uvBounds, Color col,
+            out int currentVertIndex
         )
         {
             var direction = next - start;
             var normal = math.normalize(new float2(-direction.y, direction.x));
             var perp = normal * (m_Thickness / 2);
 
+            vertex.color = col;
+
             vertex.position = new float3(start + perp, 0);
-            vertex.uv0 = new Vector2(0, 1);
+            vertex.uv0 = new Vector2(u, uvBounds.w); // Top V
             vh.AddVert(vertex);
 
             vertex.position = new float3(start - perp, 0);
-            vertex.uv0 = new Vector2(0, 0);
+            vertex.uv0 = new Vector2(u, uvBounds.y); // Bottom V
             vh.AddVert(vertex);
 
             currentVertIndex = vh.currentVertCount - 2;
@@ -265,7 +367,7 @@ namespace Maro.UILineDrawer
 
         private void AddJoint(
             VertexHelper vh, UIVertex vertex, float2 previous, float2 current, float2 next,
-            ref int prevVertIndex
+            float u, Vector4 uvBounds, Color col, ref int prevVertIndex
         )
         {
             var d1 = math.normalize(current - previous);
@@ -285,14 +387,18 @@ namespace Maro.UILineDrawer
 
             float miterLength = (m_Thickness / 2) / dot;
 
+            vertex.color = col;
+
             if (math.abs(miterLength) > m_Thickness * MiterLimit)
             {
                 var perp1 = n1 * (m_Thickness / 2);
+
                 vertex.position = new float3(current + perp1, 0);
-                vertex.uv0 = new Vector2(0, 1);
+                vertex.uv0 = new Vector2(u, uvBounds.w);
                 vh.AddVert(vertex);
+
                 vertex.position = new float3(current - perp1, 0);
-                vertex.uv0 = new Vector2(0, 0);
+                vertex.uv0 = new Vector2(u, uvBounds.y);
                 vh.AddVert(vertex);
 
                 int bevelStartIndex = vh.currentVertCount - 2;
@@ -300,11 +406,13 @@ namespace Maro.UILineDrawer
                 vh.AddTriangle(prevVertIndex + 1, bevelStartIndex, bevelStartIndex + 1);
 
                 var perp2 = n2 * (m_Thickness / 2);
+
                 vertex.position = new float3(current + perp2, 0);
-                vertex.uv0 = new Vector2(0, 1);
+                vertex.uv0 = new Vector2(u, uvBounds.w);
                 vh.AddVert(vertex);
+
                 vertex.position = new float3(current - perp2, 0);
-                vertex.uv0 = new Vector2(0, 0);
+                vertex.uv0 = new Vector2(u, uvBounds.y);
                 vh.AddVert(vertex);
 
                 int bevelEndIndex = vh.currentVertCount - 2;
@@ -316,11 +424,13 @@ namespace Maro.UILineDrawer
             else
             {
                 var miterVec = miter * miterLength;
+
                 vertex.position = new float3(current + miterVec, 0);
-                vertex.uv0 = new Vector2(0, 1);
+                vertex.uv0 = new Vector2(u, uvBounds.w);
                 vh.AddVert(vertex);
+
                 vertex.position = new float3(current - miterVec, 0);
-                vertex.uv0 = new Vector2(0, 0);
+                vertex.uv0 = new Vector2(u, uvBounds.y);
                 vh.AddVert(vertex);
 
                 int currentIndex = vh.currentVertCount - 2;
@@ -331,17 +441,23 @@ namespace Maro.UILineDrawer
             }
         }
 
-        private void EndLineSegment(VertexHelper vh, UIVertex vertex, float2 previous, float2 end, int prevVertIndex)
+        private void EndLineSegment(
+            VertexHelper vh, UIVertex vertex, float2 previous, float2 end, float u, Vector4 uvBounds, Color col,
+            int prevVertIndex
+        )
         {
             var dir = end - previous;
             var normal = math.normalize(new float2(-dir.y, dir.x));
             var perp = normal * (m_Thickness / 2);
 
+            vertex.color = col;
+
             vertex.position = new float3(end + perp, 0);
-            vertex.uv0 = new Vector2(0, 1);
+            vertex.uv0 = new Vector2(u, uvBounds.w);
             vh.AddVert(vertex);
+
             vertex.position = new float3(end - perp, 0);
-            vertex.uv0 = new Vector2(0, 0);
+            vertex.uv0 = new Vector2(u, uvBounds.y);
             vh.AddVert(vertex);
 
             int currentIndex = vh.currentVertCount - 2;
