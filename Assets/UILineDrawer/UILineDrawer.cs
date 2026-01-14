@@ -15,7 +15,11 @@ namespace Maro.UILineDrawer
         private const float MiterLimit = 1.0f;
 
         [SerializeField]
-        private List<BezierKnot2D> m_Points = new();
+        private List<BezierKnot2D> m_Points = new List<BezierKnot2D>()
+        {
+            new BezierKnot2D(new float2(-50, 0)),
+            new BezierKnot2D(new float2(50, 0))
+        };
 
         [SerializeField]
         private float m_Thickness = 5;
@@ -99,7 +103,12 @@ namespace Maro.UILineDrawer
 
         private void RecalculateBounds()
         {
-            if (_optimizedPoints.Count == 0) return;
+            if (_optimizedPoints.Count == 0)
+            {
+                rectTransform.sizeDelta = new Vector2(1f, 1f);
+                rectTransform.pivot = new Vector2(0.5f, 0.5f);
+                return;
+            }
 
             var min = new float2(float.MaxValue);
             var max = new float2(float.MinValue);
@@ -185,7 +194,7 @@ namespace Maro.UILineDrawer
         {
             EnsureValidSpline();
 
-            if (m_Spline == null || m_Spline.Count < 2) return false;
+            if (m_Spline.Count < 2) return false;
 
             RectTransformUtility.ScreenPointToLocalPointInRectangle(rectTransform, sp, camera, out Vector2 localPoint);
 
@@ -213,7 +222,7 @@ namespace Maro.UILineDrawer
 
         private void CreateMesh(VertexHelper vh)
         {
-            if (m_Spline == null || m_Spline.Count < 2 || _optimizedPoints.Count < 2 || m_Spline.GetLength() < m_Thickness)
+            if (m_Spline.Count < 2 || _optimizedPoints.Count < 2 || m_Spline.GetLength() < m_Thickness)
                 return;
 
             UIVertex vertex = UIVertex.simpleVert;
@@ -235,7 +244,9 @@ namespace Maro.UILineDrawer
             EndLineSegment(vh, vertex, current, next, prevVertIndex);
         }
 
-        private void BeginLineSegment(VertexHelper vh, UIVertex vertex, float2 start, float2 next, out int currentVertIndex)
+        private void BeginLineSegment(
+            VertexHelper vh, UIVertex vertex, float2 start, float2 next, out int currentVertIndex
+        )
         {
             var direction = next - start;
             var normal = math.normalize(new float2(-direction.y, direction.x));
@@ -252,7 +263,10 @@ namespace Maro.UILineDrawer
             currentVertIndex = vh.currentVertCount - 2;
         }
 
-        private void AddJoint(VertexHelper vh, UIVertex vertex, float2 previous, float2 current, float2 next, ref int prevVertIndex)
+        private void AddJoint(
+            VertexHelper vh, UIVertex vertex, float2 previous, float2 current, float2 next,
+            ref int prevVertIndex
+        )
         {
             var d1 = math.normalize(current - previous);
             var d2 = math.normalize(next - current);

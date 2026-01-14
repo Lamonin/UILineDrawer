@@ -10,16 +10,20 @@ namespace Maro.UILineDrawer
     {
         private UILineDrawer _target;
         private Transform _transform;
+        private int _previousArraySize;
 
         private const string ShowGizmosKey = "Maro.UILineDrawer.ShowGizmos";
 
         private const float KnotHandleSize = 0.12f;
         private const float TangentHandleSize = 0.08f;
+        private const float ZeroTangentOffset = 0.2f;
+        private const float ZeroTangentSizeFactor = 0.6f;
         private const float LineThickness = 2.0f;
+        private readonly Vector2 _newPointOffset = new Vector2(1f, 1f);
 
-        private readonly Color _connectionColor = Color.cyan;
-        private readonly Color _positionColor = Color.white;
-        private readonly Color _rotationColor = new Color(1f, 0.5f, 0f, 0.7f); // Orange
+        private readonly Color _lineColor = Color.cyan;
+        private readonly Color _positionColor = Color.yellow;
+        private readonly Color _rotationColor = new Color(1f, 0.5f, 0f, 0.7f);
         private readonly Color _tangentInColor = Color.green;
         private readonly Color _tangentOutColor = Color.blue;
 
@@ -27,6 +31,9 @@ namespace Maro.UILineDrawer
         {
             _target = (UILineDrawer)target;
             _transform = _target.transform;
+
+            var pointsProp = serializedObject.FindProperty("m_Points");
+            _previousArraySize = pointsProp?.arraySize ?? 0;
         }
 
         public override VisualElement CreateInspectorGUI()
@@ -35,53 +42,92 @@ namespace Maro.UILineDrawer
 
             var pointsProp = serializedObject.FindProperty("m_Points");
             var pointsField = new PropertyField(pointsProp);
-            root.Add(pointsField);
 
-            root.Add(new PropertyField(serializedObject.FindProperty("m_Color")));
-            root.Add(new PropertyField(serializedObject.FindProperty("m_Thickness")));
-            root.Add(new PropertyField(serializedObject.FindProperty("m_Subdivisions")));
+            var colorField = new PropertyField(serializedObject.FindProperty("m_Color"));
+            var thicknessField = new PropertyField(serializedObject.FindProperty("m_Thickness"));
+            var subdivisionsField = new PropertyField(serializedObject.FindProperty("m_Subdivisions"));
 
             var raycastTargetProp = serializedObject.FindProperty("m_RaycastTarget");
             var raycastTargetField = new PropertyField(raycastTargetProp);
-            root.Add(raycastTargetField);
 
             var raycastOptionsContainer = new VisualElement();
             raycastOptionsContainer.style.paddingLeft = 15;
 
-            raycastOptionsContainer.Add(new PropertyField(serializedObject.FindProperty("m_RaycastExtraThickness")));
-            raycastOptionsContainer.Add(new PropertyField(serializedObject.FindProperty("m_RaycastStartOffset")));
-            raycastOptionsContainer.Add(new PropertyField(serializedObject.FindProperty("m_RaycastEndOffset")));
+            var raycastExtraThicknessField =
+                new PropertyField(serializedObject.FindProperty("m_RaycastExtraThickness"));
+            var raycastStartOffsetField = new PropertyField(serializedObject.FindProperty("m_RaycastStartOffset"));
+            var raycastEndOffsetField = new PropertyField(serializedObject.FindProperty("m_RaycastEndOffset"));
+
+            var maskableField = new PropertyField(serializedObject.FindProperty("m_Maskable"));
+
+            var spacer = new VisualElement { style = { height = 15 } };
+            var divider = new VisualElement
+                { style = { height = 1, backgroundColor = new Color(0.5f, 0.5f, 0.5f, 0.5f) } };
+            var bottomSpacer = new VisualElement { style = { height = 10 } };
+
+            var gizmoBtn = new Button();
+            var helpBox = new HelpBox(
+                "Controls:\n" +
+                "• Drag Point: Move Position\n" +
+                "• Drag Orange Ring: Rotate\n" +
+                "• Hold SHIFT + Drag: Edit Tangents",
+                HelpBoxMessageType.Info);
+
+            root.Add(pointsField);
+            root.Add(colorField);
+            root.Add(thicknessField);
+            root.Add(subdivisionsField);
+            root.Add(raycastTargetField);
+
+            raycastOptionsContainer.Add(raycastExtraThicknessField);
+            raycastOptionsContainer.Add(raycastStartOffsetField);
+            raycastOptionsContainer.Add(raycastEndOffsetField);
 
             root.Add(raycastOptionsContainer);
-            root.Add(new PropertyField(serializedObject.FindProperty("m_Maskable")));
-
-            void ToggleRaycastOptions(bool isEnabled)
-            {
-                raycastOptionsContainer.style.display = isEnabled ? DisplayStyle.Flex : DisplayStyle.None;
-            }
+            root.Add(maskableField);
+            root.Add(spacer);
+            root.Add(divider);
+            root.Add(bottomSpacer);
+            root.Add(gizmoBtn);
+            root.Add(helpBox);
 
             ToggleRaycastOptions(raycastTargetProp.boolValue);
+            UpdateButtonState();
 
-            root.TrackPropertyValue(pointsProp, _ =>
+            root.TrackPropertyValue(pointsProp, prop =>
             {
+                if (prop.arraySize > _previousArraySize)
+                {
+                    for (var i = _previousArraySize; i < prop.arraySize; i++)
+                    {
+                        if (i > 0)
+                        {
+                            var prevElement = prop.GetArrayElementAtIndex(i - 1);
+                            var newElement = prop.GetArrayElementAtIndex(i);
+
+                            var prevPosProp = prevElement.FindPropertyRelative("Position");
+                            var newPosProp = newElement.FindPropertyRelative("Position");
+
+                            var prevPos = GetFloat2(prevPosProp);
+                            var newPos = GetFloat2(newPosProp);
+
+                            if (prevPos == newPos)
+                            {
+                                SetFloat2(newPosProp, prevPos + _newPointOffset);
+                            }
+                        }
+                    }
+
+                    serializedObject.ApplyModifiedProperties();
+                }
+
+                _previousArraySize = prop.arraySize;
+
                 serializedObject.ApplyModifiedProperties();
                 EditorUtility.SetDirty(target);
             });
 
             root.TrackPropertyValue(raycastTargetProp, (prop) => { ToggleRaycastOptions(prop.boolValue); });
-
-            var spacer = new VisualElement { style = { height = 15 } };
-            root.Add(spacer);
-
-            var divider = new VisualElement
-                { style = { height = 1, backgroundColor = new Color(0.5f, 0.5f, 0.5f, 0.5f) } };
-            root.Add(divider);
-
-            root.Add(new VisualElement { style = { height = 10 } });
-
-            var gizmoBtn = new Button();
-
-            UpdateButtonState();
 
             gizmoBtn.clicked += () =>
             {
@@ -90,18 +136,6 @@ namespace Maro.UILineDrawer
                 UpdateButtonState();
                 SceneView.RepaintAll();
             };
-
-            root.Add(gizmoBtn);
-
-            // Help Box
-            var helpBox = new HelpBox(
-                "Controls:\n" +
-                "• Drag Point: Move Position\n" +
-                "• Drag Orange Ring: Rotate\n" +
-                "• Hold SHIFT + Drag: Edit Tangents",
-                HelpBoxMessageType.Info);
-
-            root.Add(helpBox);
 
             return root;
 
@@ -112,23 +146,30 @@ namespace Maro.UILineDrawer
                 if (areGizmosVisible)
                 {
                     gizmoBtn.text = "Hide Gizmos";
-                    gizmoBtn.style.backgroundColor = new Color(0.8f, 0.2f, 0.2f, 1f); // Red
+                    gizmoBtn.style.backgroundColor = new Color(0.8f, 0.2f, 0.2f, 1f);
                     gizmoBtn.style.color = Color.white;
+                    helpBox.visible = true;
+                    helpBox.style.display = DisplayStyle.Flex;
                 }
                 else
                 {
                     gizmoBtn.text = "Show Gizmos";
-                    gizmoBtn.style.backgroundColor = new Color(0.2f, 0.6f, 0.2f, 1f); // Green
+                    gizmoBtn.style.backgroundColor = new Color(0.2f, 0.6f, 0.2f, 1f);
                     gizmoBtn.style.color = Color.white;
+                    helpBox.visible = false;
+                    helpBox.style.display = DisplayStyle.None;
                 }
+            }
+
+            void ToggleRaycastOptions(bool isEnabled)
+            {
+                raycastOptionsContainer.style.display = isEnabled ? DisplayStyle.Flex : DisplayStyle.None;
             }
         }
 
         private void OnSceneGUI()
         {
             if (!SessionState.GetBool(ShowGizmosKey, true)) return;
-
-            if (_target == null || _transform == null) return;
 
             var isShiftHeld = (Event.current.modifiers & EventModifiers.Shift) != 0;
 
@@ -149,7 +190,7 @@ namespace Maro.UILineDrawer
         {
             if (pointsProp.arraySize < 2) return;
 
-            Handles.color = _connectionColor;
+            Handles.color = _lineColor;
 
             for (var i = 0; i < pointsProp.arraySize - 1; i++)
             {
@@ -181,59 +222,17 @@ namespace Maro.UILineDrawer
             var localTanOut = GetFloat2(tanOutProp);
 
             var knotRot = Quaternion.Euler(0, 0, rotation);
-
-            // Calculate World Position of the Knot
             var worldPos = _transform.TransformPoint(localPos);
             var handleSize = HandleUtility.GetHandleSize(worldPos);
 
-            // Calculate World Tangents
-            var worldTanInPos = _transform.TransformPoint(localPos + (Vector2)(knotRot * localTanIn));
-            var worldTanOutPos = _transform.TransformPoint(localPos + (Vector2)(knotRot * localTanOut));
+            var isTanInZero = localTanIn.sqrMagnitude < 0.0001f;
+            var isTanOutZero = localTanOut.sqrMagnitude < 0.0001f;
 
-            // Lines
-            Handles.color = _tangentInColor;
-            Handles.DrawLine(worldPos, worldTanInPos);
+            var posId = GUIUtility.GetControlID(FocusType.Passive);
+            var tanInId = GUIUtility.GetControlID(FocusType.Passive);
+            var tanOutId = GUIUtility.GetControlID(FocusType.Passive);
 
-            Handles.color = _tangentOutColor;
-            Handles.DrawLine(worldPos, worldTanOutPos);
-
-            if (isShiftHeld)
-            {
-                // Tangent IN
-                Handles.color = _tangentInColor;
-                EditorGUI.BeginChangeCheck();
-                var newWorldTanIn = Handles.FreeMoveHandle(
-                    worldTanInPos,
-                    handleSize * TangentHandleSize,
-                    Vector3.zero,
-                    Handles.DotHandleCap
-                );
-                if (EditorGUI.EndChangeCheck())
-                {
-                    var newLocalPoint = _transform.InverseTransformPoint(newWorldTanIn);
-                    var diff = (Vector2)newLocalPoint - localPos;
-                    Vector2 rotatedDiff = Quaternion.Inverse(knotRot) * diff;
-                    SetFloat2(tanInProp, rotatedDiff);
-                }
-
-                // Tangent OUT
-                Handles.color = _tangentOutColor;
-                EditorGUI.BeginChangeCheck();
-                var newWorldTanOut = Handles.FreeMoveHandle(
-                    worldTanOutPos,
-                    handleSize * TangentHandleSize,
-                    Vector3.zero,
-                    Handles.DotHandleCap
-                );
-                if (EditorGUI.EndChangeCheck())
-                {
-                    var newLocalPoint = _transform.InverseTransformPoint(newWorldTanOut);
-                    var diff = (Vector2)newLocalPoint - localPos;
-                    Vector2 rotatedDiff = Quaternion.Inverse(knotRot) * diff;
-                    SetFloat2(tanOutProp, rotatedDiff);
-                }
-            }
-
+            // Rotation Handle
             Handles.color = _rotationColor;
             EditorGUI.BeginChangeCheck();
             var currentRot = Quaternion.Euler(0, 0, rotation);
@@ -252,11 +251,13 @@ namespace Maro.UILineDrawer
                 rotProp.floatValue = newRot.eulerAngles.z;
             }
 
+            // Position Handle
             Handles.color = _positionColor;
             if (!isShiftHeld)
             {
                 EditorGUI.BeginChangeCheck();
                 var newWorldPos = Handles.FreeMoveHandle(
+                    posId,
                     worldPos,
                     handleSize * KnotHandleSize,
                     Vector3.zero,
@@ -273,12 +274,101 @@ namespace Maro.UILineDrawer
             else
             {
                 Handles.DotHandleCap(
-                    0,
+                    posId,
                     worldPos,
                     Quaternion.identity,
                     handleSize * KnotHandleSize,
                     EventType.Repaint
                 );
+            }
+
+            // Tangent Handles
+            if (isShiftHeld)
+            {
+                Vector3 worldTanInPos, worldTanOutPos;
+                float tanInSize, tanOutSize;
+
+                if (isTanInZero)
+                {
+                    worldTanInPos =
+                        _transform.TransformPoint(localPos + (Vector2.left * (handleSize * ZeroTangentOffset)));
+                    tanInSize = handleSize * TangentHandleSize * ZeroTangentSizeFactor;
+                }
+                else
+                {
+                    worldTanInPos = _transform.TransformPoint(localPos + (Vector2)(knotRot * localTanIn));
+                    tanInSize = handleSize * TangentHandleSize;
+                }
+
+                if (isTanOutZero)
+                {
+                    worldTanOutPos =
+                        _transform.TransformPoint(localPos + (Vector2.right * (handleSize * ZeroTangentOffset)));
+                    tanOutSize = handleSize * TangentHandleSize * ZeroTangentSizeFactor;
+                }
+                else
+                {
+                    worldTanOutPos = _transform.TransformPoint(localPos + (Vector2)(knotRot * localTanOut));
+                    tanOutSize = handleSize * TangentHandleSize;
+                }
+
+                Handles.color = _tangentInColor;
+                Handles.DrawLine(worldPos, worldTanInPos);
+
+                Handles.color = _tangentOutColor;
+                Handles.DrawLine(worldPos, worldTanOutPos);
+
+                // Tangent IN
+                Handles.color = _tangentInColor;
+                EditorGUI.BeginChangeCheck();
+                var newWorldTanIn = Handles.FreeMoveHandle(
+                    tanInId,
+                    worldTanInPos,
+                    tanInSize,
+                    Vector3.zero,
+                    Handles.DotHandleCap
+                );
+                if (EditorGUI.EndChangeCheck())
+                {
+                    var newLocalPoint = _transform.InverseTransformPoint(newWorldTanIn);
+                    var diff = (Vector2)newLocalPoint - localPos;
+                    Vector2 rotatedDiff = Quaternion.Inverse(knotRot) * diff;
+                    SetFloat2(tanInProp, rotatedDiff);
+                }
+
+                // Tangent OUT
+                Handles.color = _tangentOutColor;
+                EditorGUI.BeginChangeCheck();
+                var newWorldTanOut = Handles.FreeMoveHandle(
+                    tanOutId,
+                    worldTanOutPos,
+                    tanOutSize,
+                    Vector3.zero,
+                    Handles.DotHandleCap
+                );
+                if (EditorGUI.EndChangeCheck())
+                {
+                    var newLocalPoint = _transform.InverseTransformPoint(newWorldTanOut);
+                    var diff = (Vector2)newLocalPoint - localPos;
+                    Vector2 rotatedDiff = Quaternion.Inverse(knotRot) * diff;
+                    SetFloat2(tanOutProp, rotatedDiff);
+                }
+            }
+            else
+            {
+                if (!isTanInZero)
+                {
+                    var worldTanInPos = _transform.TransformPoint(localPos + (Vector2)(knotRot * localTanIn));
+                    Handles.color = _tangentInColor;
+                    Handles.DrawLine(worldPos, worldTanInPos);
+                }
+
+                if (!isTanOutZero)
+                {
+                    var worldTanOutPos = _transform.TransformPoint(localPos + (Vector2)(knotRot * localTanOut));
+                    Handles.color = _tangentOutColor;
+                    Handles.DrawLine(worldPos, worldTanOutPos);
+                }
             }
 
             Handles.Label(worldPos + Vector3.up * (handleSize * 0.2f), $"P{index}");
