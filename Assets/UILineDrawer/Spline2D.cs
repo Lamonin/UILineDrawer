@@ -17,7 +17,6 @@ namespace Maro.UILineDrawer
 
         private bool m_IsDirty;
         private bool m_IsLengthDirty;
-
         private bool m_Closed = false;
 
         public bool Closed
@@ -87,9 +86,6 @@ namespace Maro.UILineDrawer
             SetDirty();
         }
 
-        /// <summary>
-        /// Helper to mark caches as invalid.
-        /// </summary>
         private void SetDirty()
         {
             m_IsDirty = true;
@@ -104,9 +100,6 @@ namespace Maro.UILineDrawer
             return angle;
         }
 
-        /// <summary>
-        /// Validates and rebuilds the BezierCurve2D cache if needed.
-        /// </summary>
         private void EnsureCurveCache()
         {
             if (!m_IsDirty) return;
@@ -120,7 +113,6 @@ namespace Maro.UILineDrawer
                 return;
             }
 
-            // Determine how many curves we have
             int curveCount = m_Closed ? knotCount : knotCount - 1;
 
             for (int i = 0; i < curveCount; i++)
@@ -130,7 +122,6 @@ namespace Maro.UILineDrawer
                 var startKnot = m_Knots[i];
                 var endKnot = m_Knots[nextIndex];
 
-                // Rotate Tangents
                 var startKnotRotation = NormalizeAngleDeg(startKnot.Rotation);
                 float2 tOut = math.mul(float2x2.Rotate(math.radians(startKnotRotation)), startKnot.TangentOut);
 
@@ -167,13 +158,49 @@ namespace Maro.UILineDrawer
         }
 
         /// <summary>
-        /// Calculates or returns the cached total length of the spline.
+        /// Evaluates the spline at a normalized position t (0.0 to 1.0).
+        /// Returns both the position and the 2D normal vector at that point.
         /// </summary>
+        public void Evaluate(float t, out float2 position, out float2 normal)
+        {
+            EnsureCurveCache();
+
+            int curveCount = m_CachedCurves.Count;
+            if (curveCount == 0)
+            {
+                position = float2.zero;
+                normal = new float2(0, 1);
+                return;
+            }
+
+            // Map global t to curve index and local t
+            t = math.saturate(t);
+            float totalT = t * curveCount;
+            int index = (int)totalT;
+            float localT = totalT - index;
+
+            // Handle end of spline edge case
+            if (index >= curveCount)
+            {
+                index = curveCount - 1;
+                localT = 1f;
+            }
+
+            var curve = m_CachedCurves[index];
+            position = curve.Evaluate(localT);
+
+            // Calculate tangent, then rotate 90 degrees for normal (-y, x)
+            float2 tangent = curve.EvaluateDerivative(localT);
+            float2 perp = new float2(-tangent.y, tangent.x);
+
+            // NormalizeSafe handles zero-length tangents gracefully
+            normal = math.normalizesafe(perp);
+        }
+
         public float GetLength(int resolutionPerCurve = 10)
         {
             EnsureCurveCache();
 
-            // If knots changed OR requested resolution changed, we recalculate
             if (m_IsLengthDirty || resolutionPerCurve != m_CachedLengthResolution)
             {
                 m_CachedLength = 0;
@@ -182,12 +209,9 @@ namespace Maro.UILineDrawer
 
                 for (int i = 0; i < count; i++)
                 {
-                    // Access direct struct from list (avoid copying if possible, though List indexer returns copy for struct)
                     var curve = m_CachedCurves[i];
-
                     float2 prevPos = curve.P0;
 
-                    // Numerical integration
                     for (int j = 1; j <= resolutionPerCurve; j++)
                     {
                         float t = j * step;
@@ -232,6 +256,7 @@ namespace Maro.UILineDrawer
 
             int curveCount = m_CachedCurves.Count;
 
+            // Rough pass
             for (int i = 0; i < curveCount; i++)
             {
                 var curve = m_CachedCurves[i];
@@ -252,6 +277,7 @@ namespace Maro.UILineDrawer
                 }
             }
 
+            // Binary search refinement
             var bestCurve = m_CachedCurves[bestCurveIndex];
             float stepSize = 1.0f / resolution;
 

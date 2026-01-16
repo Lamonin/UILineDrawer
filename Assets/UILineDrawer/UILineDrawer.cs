@@ -52,8 +52,8 @@ namespace Maro.UILineDrawer
         private int m_Subdivisions = MinSubdivisions;
 
         private readonly Spline2D _spline = new Spline2D();
-        private readonly List<float2> _optimizedPoints = new();
-        private bool _isDirty;
+        private readonly List<float2> _optimizedPoints = new List<float2>();
+        private bool _isDirty = true;
 
         public float Thickness
         {

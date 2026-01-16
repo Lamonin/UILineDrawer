@@ -49,13 +49,12 @@ namespace Maro.UILineDrawer
             var maskableProp = serializedObject.FindProperty("m_Maskable");
 
             root.Add(CreateHeader("Path Configuration", 0, 2));
-            root.Add(new PropertyField(pointsProp));
-            root.Add(new PropertyField(thicknessProp));
-            root.Add(new PropertyField(subdivisionsProp));
+            root.Add(new PropertyField(pointsProp) { tooltip = "The list of points defining the shape of the path." });
+            root.Add(new PropertyField(thicknessProp) { tooltip = "The visual width of the path." });
+            root.Add(new PropertyField(subdivisionsProp) { tooltip = "The number of segments between points for smoother curves." });
 
             root.Add(CreateHeader("Appearance", 4, 2));
 
-            var colorContainer = new VisualElement();
             var colorModeDropdown = new DropdownField(
                 "Color Mode",
                 new List<string> { "Solid Color", "Gradient" },
@@ -63,40 +62,55 @@ namespace Maro.UILineDrawer
             );
             colorModeDropdown.AddToClassList(DropdownField.alignedFieldUssClassName);
 
-            var solidColorField = new PropertyField(colorProp) { label = "Color" };
-            var gradientField = new PropertyField(gradientProp) { label = "Gradient" };
+            var solidColorField = new PropertyField(colorProp)
+                { label = "Color", tooltip = "Solid color applied to the path when Color Mode is set to Solid." };
+            var gradientField = new PropertyField(gradientProp)
+                { label = "Gradient", tooltip = "Gradient applied across the path length. This takes priority over solid color when enabled." };
 
+            var colorContainer = new VisualElement();
             colorContainer.Add(colorModeDropdown);
             colorContainer.Add(solidColorField);
             colorContainer.Add(gradientField);
             root.Add(colorContainer);
-            root.Add(new PropertyField(materialProp));
-            root.Add(new PropertyField(spriteProp));
-            root.Add(new PropertyField(tilingProp));
+
+            root.Add(new PropertyField(materialProp) { tooltip = "Optional. Custom material to override the default path rendering." });
+            root.Add(new PropertyField(spriteProp) { tooltip = "Optional. Sprite used as a texture along the path." });
+            root.Add(new PropertyField(tilingProp) { tooltip = "Controls how many times the texture repeats along the path length." });
 
             UpdateColorMode(useGradientProp.boolValue ? "Gradient" : "Solid Color");
             colorModeDropdown.RegisterValueChangedCallback(evt => UpdateColorMode(evt.newValue));
 
             root.Add(CreateHeader("Interaction", 4, 2));
-            root.Add(new PropertyField(raycastTargetProp));
+            root.Add(new PropertyField(raycastTargetProp) { tooltip = "Whether this path can be hit by UI pointer events." });
 
             var raycastOptionsContainer = new VisualElement { style = { paddingLeft = 15 } };
-            raycastOptionsContainer.Add(new PropertyField(serializedObject.FindProperty("m_RaycastExtraThickness")));
-            raycastOptionsContainer.Add(new PropertyField(serializedObject.FindProperty("m_RaycastStartOffset")));
-            raycastOptionsContainer.Add(new PropertyField(serializedObject.FindProperty("m_RaycastEndOffset")));
+            raycastOptionsContainer.Add(
+                new PropertyField(serializedObject.FindProperty("m_RaycastExtraThickness"))
+                    { tooltip = "Increases the hit detection area beyond the visual thickness." }
+            );
+            raycastOptionsContainer.Add(
+                new PropertyField(serializedObject.FindProperty("m_RaycastStartOffset"))
+                    { tooltip = "Adjusts where the raycast detection starts relative to the first point." }
+            );
+            raycastOptionsContainer.Add(
+                new PropertyField(serializedObject.FindProperty("m_RaycastEndOffset"))
+                    { tooltip = "Adjusts where the raycast detection ends relative to the last point." }
+            );
             root.Add(raycastOptionsContainer);
-            root.Add(new PropertyField(maskableProp));
+            root.Add(new PropertyField(maskableProp) { tooltip = "Whether the path is affected by UI Mask components." });
 
             ToggleRaycastOptions(raycastTargetProp.boolValue);
             root.TrackPropertyValue(raycastTargetProp, prop => ToggleRaycastOptions(prop.boolValue));
 
-            root.Add(new VisualElement
-            {
-                style =
+            root.Add(
+                new VisualElement
                 {
-                    height = 1, marginTop = 4, marginBottom = 4, backgroundColor = new Color(0.5f, 0.5f, 0.5f, 0.5f)
+                    style =
+                    {
+                        height = 1, marginTop = 4, marginBottom = 4, backgroundColor = new Color(0.5f, 0.5f, 0.5f, 0.5f)
+                    }
                 }
-            });
+            );
 
             var gizmoBtn = new Button { style = { height = 25 } };
             var helpBox = new HelpBox(
@@ -104,7 +118,8 @@ namespace Maro.UILineDrawer
                 "• Drag Point: Move Position\n" +
                 "• Drag Orange Ring: Rotate\n" +
                 "• Hold SHIFT + Drag: Edit Tangents",
-                HelpBoxMessageType.Info);
+                HelpBoxMessageType.Info
+            );
 
             root.Add(gizmoBtn);
             root.Add(helpBox);

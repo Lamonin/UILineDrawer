@@ -31,5 +31,16 @@ namespace Maro.UILineDrawer
                    3 * rt * t * t * P2 +
                    t * t * t * P3;
         }
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public float2 EvaluateDerivative(float t)
+        {
+            t = math.saturate(t);
+            float rt = 1f - t;
+            // Derivative of Cubic Bezier: 3(1-t)^2(P1-P0) + 6(1-t)t(P2-P1) + 3t^2(P3-P2)
+            return 3f * rt * rt * (P1 - P0) +
+                   6f * rt * t * (P2 - P1) +
+                   3f * t * t * (P3 - P2);
+        }
     }
 }
