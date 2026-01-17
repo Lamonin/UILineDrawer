@@ -25,6 +25,7 @@ namespace Maro.UILineDrawer
         private readonly Color _rotationColor = new Color(1f, 0.5f, 0f, 0.7f);
         private readonly Color _tangentInColor = Color.green;
         private readonly Color _tangentOutColor = Color.blue;
+        private readonly Color _raycastOffsetColor = Color.red;
 
         private void OnEnable()
         {
@@ -90,11 +91,11 @@ namespace Maro.UILineDrawer
             );
             raycastOptionsContainer.Add(
                 new PropertyField(serializedObject.FindProperty("m_RaycastStartOffset"))
-                    { tooltip = "Adjusts where the raycast detection starts relative to the first point." }
+                    { tooltip = "Adjusts where the raycast detection starts (normalized 0-1)." }
             );
             raycastOptionsContainer.Add(
                 new PropertyField(serializedObject.FindProperty("m_RaycastEndOffset"))
-                    { tooltip = "Adjusts where the raycast detection ends relative to the last point." }
+                    { tooltip = "Adjusts where the raycast detection ends (normalized 0-1)." }
             );
             root.Add(raycastOptionsContainer);
             root.Add(new PropertyField(maskableProp) { tooltip = "Whether the path is affected by UI Mask components." });
@@ -197,12 +198,55 @@ namespace Maro.UILineDrawer
             var pointsProp = serializedObject.FindProperty("m_Points");
             DrawConnections(pointsProp);
 
+            DrawRaycastOffsets();
+
             for (var i = 0; i < pointsProp.arraySize; i++)
             {
                 DrawAndEditKnot(pointsProp, i, isShiftHeld);
             }
 
             serializedObject.ApplyModifiedProperties();
+        }
+
+        private void DrawRaycastOffsets()
+        {
+            var raycastTargetProp = serializedObject.FindProperty("m_RaycastTarget");
+            if (raycastTargetProp != null && !raycastTargetProp.boolValue) return;
+
+            var startOffset = serializedObject.FindProperty("m_RaycastStartOffset").floatValue;
+            var endOffset = serializedObject.FindProperty("m_RaycastEndOffset").floatValue;
+
+            if (startOffset <= 0 && endOffset <= 0) return;
+
+            var spline = _target.Spline;
+            if (spline == null || spline.Count < 2) return;
+
+            float totalLength = spline.GetLength();
+            if (totalLength <= 0) return;
+
+            Handles.color = _raycastOffsetColor;
+            float gizmoSize = HandleUtility.GetHandleSize(_transform.position) * 0.5f;
+
+            if (startOffset > 0)
+            {
+                float t = Mathf.Clamp01(startOffset);
+                DrawOffsetGizmo(spline, t, gizmoSize);
+            }
+
+            if (endOffset < 1)
+            {
+                float t = Mathf.Clamp01(endOffset);
+                DrawOffsetGizmo(spline, t, gizmoSize);
+            }
+        }
+
+        private void DrawOffsetGizmo(Spline2D spline, float t, float size)
+        {
+            spline.Evaluate(t, out var localPos, out var localNormal);
+            var worldPos = _transform.TransformPoint(new Vector3(localPos.x, localPos.y, 0));
+            var worldNormal = _transform.TransformDirection(new Vector3(localNormal.x, localNormal.y, 0));
+
+            Handles.DrawLine(worldPos - worldNormal * size, worldPos + worldNormal * size, LineThickness);
         }
 
         private void DrawConnections(SerializedProperty pointsProp)

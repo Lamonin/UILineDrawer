@@ -42,11 +42,11 @@ namespace Maro.UILineDrawer
         [SerializeField]
         private float m_RaycastExtraThickness = 1;
 
-        [SerializeField]
+        [SerializeField, Range(0, 1)]
         private float m_RaycastStartOffset = 0.0f;
 
-        [SerializeField]
-        private float m_RaycastEndOffset = 0.0f;
+        [SerializeField, Range(0, 1)]
+        private float m_RaycastEndOffset = 1.0f;
 
         [SerializeField]
         private int m_Subdivisions = MinSubdivisions;
@@ -55,6 +55,14 @@ namespace Maro.UILineDrawer
         private readonly List<float2> _optimizedPoints = new List<float2>();
         private bool _isDirty = true;
 
+        /// <summary>
+        /// Gets the underlying spline used for drawing.
+        /// </summary>
+        public Spline2D Spline => _spline;
+
+        /// <summary>
+        /// Gets or sets the thickness of the line.
+        /// </summary>
         public float Thickness
         {
             get => m_Thickness;
@@ -66,6 +74,24 @@ namespace Maro.UILineDrawer
             }
         }
 
+        /// <summary>
+        /// Gets or sets the number of subdivisions used for spline interpolation.
+        /// </summary>
+        public int Subdivisions
+        {
+            get => m_Subdivisions;
+            set
+            {
+                int val = Mathf.Clamp(value, MinSubdivisions, MaxSubdivisions);
+                if (m_Subdivisions == val) return;
+                m_Subdivisions = val;
+                SetDirty();
+            }
+        }
+
+        /// <summary>
+        /// Gets or sets the tiling factor for the line texture.
+        /// </summary>
         public float Tiling
         {
             get => m_Tiling;
@@ -77,6 +103,9 @@ namespace Maro.UILineDrawer
             }
         }
 
+        /// <summary>
+        /// Gets or sets whether a gradient is used for the line color.
+        /// </summary>
         public bool UseGradient
         {
             get => m_UseGradient;
@@ -88,30 +117,15 @@ namespace Maro.UILineDrawer
             }
         }
 
+        /// <summary>
+        /// Gets or sets the gradient used for the line color.
+        /// </summary>
         public Gradient Gradient
         {
             get => m_Gradient;
             set
             {
                 m_Gradient = value;
-                SetDirty();
-            }
-        }
-
-        public float RaycastExtraThickness
-        {
-            get => m_RaycastExtraThickness;
-            set { m_RaycastExtraThickness = Mathf.Max(value, 0); }
-        }
-
-        public int Subdivisions
-        {
-            get => m_Subdivisions;
-            set
-            {
-                int val = Mathf.Clamp(value, MinSubdivisions, MaxSubdivisions);
-                if (m_Subdivisions == val) return;
-                m_Subdivisions = val;
                 SetDirty();
             }
         }
@@ -125,6 +139,34 @@ namespace Maro.UILineDrawer
                 m_Sprite = value;
                 SetDirty();
                 SetMaterialDirty();
+            }
+        }
+
+        public float RaycastExtraThickness
+        {
+            get => m_RaycastExtraThickness;
+            set => m_RaycastExtraThickness = Mathf.Max(value, 0);
+        }
+
+        public float RaycastStartOffset
+        {
+            get => m_RaycastStartOffset;
+            set
+            {
+                m_RaycastStartOffset = Mathf.Clamp01(value);
+                if (m_RaycastStartOffset > m_RaycastEndOffset)
+                    m_RaycastEndOffset = m_RaycastStartOffset;
+            }
+        }
+
+        public float RaycastEndOffset
+        {
+            get => m_RaycastEndOffset;
+            set
+            {
+                m_RaycastEndOffset = Mathf.Clamp01(value);
+                if (m_RaycastEndOffset < m_RaycastStartOffset)
+                    m_RaycastStartOffset = m_RaycastEndOffset;
             }
         }
 
@@ -156,6 +198,19 @@ namespace Maro.UILineDrawer
             m_Thickness = Mathf.Max(m_Thickness, MinThickness);
             m_Subdivisions = Mathf.Clamp(m_Subdivisions, MinSubdivisions, MaxSubdivisions);
             m_Tiling = Mathf.Max(m_Tiling, MinTiling);
+            m_RaycastExtraThickness = Mathf.Max(m_RaycastExtraThickness, 0);
+            m_RaycastStartOffset = Mathf.Clamp01(m_RaycastStartOffset);
+            m_RaycastEndOffset = Mathf.Clamp01(m_RaycastEndOffset);
+
+            if (m_RaycastStartOffset > m_RaycastEndOffset)
+            {
+                m_RaycastStartOffset = m_RaycastEndOffset;
+            }
+
+            if  (m_RaycastEndOffset < m_RaycastStartOffset)
+            {
+                m_RaycastEndOffset = m_RaycastStartOffset;
+            }
 
             SetDirty();
         }
@@ -230,12 +285,18 @@ namespace Maro.UILineDrawer
             }
         }
 
+        /// <summary>
+        /// Adds a new control point to the spline.
+        /// </summary>
         public void AddPoint(BezierKnot2D point)
         {
             m_Points.Add(point);
             SetDirty();
         }
 
+        /// <summary>
+        /// Removes the control point at the specified index.
+        /// </summary>
         public void RemovePoint(int index)
         {
             if (index < 0 || index >= m_Points.Count) return;
@@ -243,6 +304,9 @@ namespace Maro.UILineDrawer
             SetDirty();
         }
 
+        /// <summary>
+        /// Updates the control point at the specified index.
+        /// </summary>
         public void UpdatePoint(int index, BezierKnot2D newPoint)
         {
             if (index < 0 || index >= m_Points.Count) return;
@@ -250,6 +314,9 @@ namespace Maro.UILineDrawer
             SetDirty();
         }
 
+        /// <summary>
+        /// Replaces all control points with the provided collection.
+        /// </summary>
         public void UpdatePoints(IEnumerable<BezierKnot2D> points)
         {
             m_Points.Clear();
@@ -264,13 +331,13 @@ namespace Maro.UILineDrawer
             return t;
         }
 
-        public override bool Raycast(Vector2 sp, Camera camera)
+        public override bool Raycast(Vector2 sp, Camera eventCamera)
         {
             EnsureValidSpline();
 
             if (_spline.Count < 2) return false;
 
-            RectTransformUtility.ScreenPointToLocalPointInRectangle(rectTransform, sp, camera, out Vector2 localPoint);
+            RectTransformUtility.ScreenPointToLocalPointInRectangle(rectTransform, sp, eventCamera, out Vector2 localPoint);
 
             var point = new float2(localPoint.x, localPoint.y);
             var pointOnSpline = _spline.GetClosestPoint(point, out var t);
@@ -278,11 +345,10 @@ namespace Maro.UILineDrawer
 
             if (distance < m_Thickness + m_RaycastExtraThickness)
             {
-                var splineLength = _spline.GetLength();
-                var pointPosition = t * splineLength;
+                var pointNormalizedT = t;
 
-                return !(pointPosition < m_RaycastStartOffset)
-                       && !(pointPosition > splineLength - m_RaycastEndOffset);
+                return pointNormalizedT >= m_RaycastStartOffset
+                       && pointNormalizedT <= m_RaycastEndOffset;
             }
 
             return false;
