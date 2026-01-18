@@ -65,7 +65,7 @@ Make sure it installed via the Package Manager if they not installed automatical
 ## Installation
 
 ```
-https://github.com/Lamonin/UILineDrawer.git?path=/Assets/UILineDrawer/#0.2.2
+https://github.com/Lamonin/UILineDrawer.git?path=/Assets/UILineDrawer/#0.3.0
 ```
 
 1. Open **Window** → **Package Manager**.
