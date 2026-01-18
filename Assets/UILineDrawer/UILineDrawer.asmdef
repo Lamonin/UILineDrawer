@@ -2,9 +2,7 @@
     "name": "Maro.UILineDrawer",
     "rootNamespace": "Maro.UILineDrawer",
     "references": [
-        "GUID:d8b63aba1907145bea998dd612889d6b",
-        "GUID:21d1eb854b91ade49bc69a263d12bee2",
-        "GUID:e43142fc3fec6554980dde6126631f1d"
+        "GUID:d8b63aba1907145bea998dd612889d6b"
     ],
     "includePlatforms": [],
     "excludePlatforms": [],

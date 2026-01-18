@@ -10,9 +10,18 @@ namespace Maro.UILineDrawer
     public class UILineDrawerEditor : Editor
     {
         private UILineDrawer _target;
+
+        private enum TangentMode
+        {
+            Free,
+            Mirror
+        }
+
+        private TangentMode _tangentMode = TangentMode.Free;
         private Transform _transform;
 
         private const string ShowGizmosKey = "Maro.UILineDrawer.ShowGizmos";
+        private const string TangentModeKey = "Maro.UILineDrawer.TangentMode";
 
         private const float KnotHandleSize = 0.12f;
         private const float TangentHandleSize = 0.08f;
@@ -125,6 +134,62 @@ namespace Maro.UILineDrawer
             root.Add(gizmoBtn);
             root.Add(helpBox);
 
+            var tangentModeContainer = new VisualElement { style = { flexDirection = FlexDirection.Row, alignItems = Align.Center } };
+
+            var tangentModeLabel = new Label("Tangent Mode");
+            tangentModeLabel.style.minWidth = 100;
+
+            var tangentModeFreeButton = new Button
+            {
+                text = "Free",
+                style =
+                {
+                    flexGrow = 1,
+                    marginRight = 2
+                }
+            };
+            tangentModeFreeButton.AddToClassList("toggle-button");
+
+            var tangentModeMirrorButton = new Button
+            {
+                text = "Mirror",
+                style =
+                {
+                    flexGrow = 1,
+                    marginLeft = 2
+                }
+            };
+            tangentModeMirrorButton.AddToClassList("toggle-button");
+
+            _tangentMode = (TangentMode)SessionState.GetInt(TangentModeKey, 0);
+
+            tangentModeFreeButton.clicked += () =>
+            {
+                if (_tangentMode == TangentMode.Free) return;
+                _tangentMode = TangentMode.Free;
+                SessionState.SetInt(TangentModeKey, (int)_tangentMode);
+                UpdateTangentModeButtons(_tangentMode);
+            };
+
+            tangentModeMirrorButton.clicked += () =>
+            {
+                if (_tangentMode == TangentMode.Mirror) return;
+                _tangentMode = TangentMode.Mirror;
+                SessionState.SetInt(TangentModeKey, (int)_tangentMode);
+                UpdateTangentModeButtons(_tangentMode);
+            };
+
+            UpdateTangentModeButtons(_tangentMode);
+
+            tangentModeContainer.Add(tangentModeLabel);
+            tangentModeContainer.Add(tangentModeFreeButton);
+            tangentModeContainer.Add(tangentModeMirrorButton);
+
+            var areGizmosVisible = SessionState.GetBool(ShowGizmosKey, true);
+            tangentModeContainer.style.display = areGizmosVisible ? DisplayStyle.Flex : DisplayStyle.None;
+
+            root.Add(tangentModeContainer);
+
             UpdateButtonState();
             gizmoBtn.clicked += () =>
             {
@@ -132,9 +197,32 @@ namespace Maro.UILineDrawer
                 SessionState.SetBool(ShowGizmosKey, !currentState);
                 UpdateButtonState();
                 SceneView.RepaintAll();
+
+                tangentModeContainer.style.display = !currentState ? DisplayStyle.Flex : DisplayStyle.None;
             };
 
             return root;
+
+            void UpdateTangentModeButtons(TangentMode tangentMode)
+            {
+                var activeColor = new Color(0.6f, 0.6f, 0.6f, 0.6f);
+                var inactiveColor = new Color(0.5f, 0.5f, 0.5f, 0.5f);
+
+                if (tangentMode == TangentMode.Free)
+                {
+                    tangentModeFreeButton.style.backgroundColor = activeColor;
+                    tangentModeFreeButton.style.unityFontStyleAndWeight = FontStyle.Bold;
+                    tangentModeMirrorButton.style.backgroundColor = inactiveColor;
+                    tangentModeMirrorButton.style.unityFontStyleAndWeight = FontStyle.Normal;
+                }
+                else
+                {
+                    tangentModeFreeButton.style.backgroundColor = inactiveColor;
+                    tangentModeFreeButton.style.unityFontStyleAndWeight = FontStyle.Normal;
+                    tangentModeMirrorButton.style.backgroundColor = activeColor;
+                    tangentModeMirrorButton.style.unityFontStyleAndWeight = FontStyle.Bold;
+                }
+            }
 
             void UpdateButtonState()
             {
@@ -397,6 +485,11 @@ namespace Maro.UILineDrawer
                     var diff = (Vector2)newLocalPoint - localPos;
                     Vector2 rotatedDiff = Quaternion.Inverse(knotRot) * diff;
                     SetFloat2(tanInProp, rotatedDiff);
+                    if (_tangentMode == TangentMode.Mirror)
+                    {
+                        // Mirror the out tangent
+                        SetFloat2(tanOutProp, -rotatedDiff);
+                    }
                 }
 
                 // Tangent OUT
@@ -415,6 +508,11 @@ namespace Maro.UILineDrawer
                     var diff = (Vector2)newLocalPoint - localPos;
                     Vector2 rotatedDiff = Quaternion.Inverse(knotRot) * diff;
                     SetFloat2(tanOutProp, rotatedDiff);
+                    if (_tangentMode == TangentMode.Mirror)
+                    {
+                        // Mirror the in tangent
+                        SetFloat2(tanInProp, -rotatedDiff);
+                    }
                 }
             }
             else

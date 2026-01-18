@@ -7,7 +7,7 @@ namespace Maro.UILineDrawer
     public static class BezierUtility
     {
         private const int MaxRecursionDepth = 16;
-        private const float BaseTolerance = 1f;
+        private const float BaseTolerance = 2f;
 
         /// <summary>
         /// Populates the provided buffer with points representing the flattened spline.
