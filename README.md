@@ -40,15 +40,21 @@ UILineDrawer was created to solve this limitation.
 
 - **Made for Canvas**: the component is designed for simple and effective operation within the Unity Canvas environment.
 
+  - **Mask Support**: full support for Rect2D and Mask masks.
+
+    ![Masks Example](images/mask_example.gif)
+
+  - **Raycast Support**: full raycast support.
+
+    ![Raycast Example](images/raycast_example.gif)
+
 - **Runtime API**: full C# API to add, remove, and modify spline points and visual properties at runtime.
 
-- **Mask Support**: full support for Rect2D and Mask masks.
+- **Sprite Support**: optional sprite-based rendering with configurable UV tiling.
 
-![Masks Example](images/mask_example.gif)
+- **Gradient Support**: per-line gradient mode in addition to solid color.
 
-- **Raycast Support**: full raycast support.
-
-![Raycast Example](images/raycast_example.gif)
+- **[Experimental] Material Support**: this is not necessary for my use cases, so this functionality has not been tested.
 
 ---
 
@@ -65,7 +71,7 @@ Make sure it installed via the Package Manager if they not installed automatical
 ## Installation
 
 ```
-https://github.com/Lamonin/UILineDrawer.git?path=/Assets/UILineDrawer/#0.3.0
+https://github.com/Lamonin/UILineDrawer.git?path=/Assets/UILineDrawer/#0.3.1
 ```
 
 1. Open **Window** → **Package Manager**.
@@ -124,6 +130,9 @@ public class LineController : MonoBehaviour
 | ------------------------------ | ------------------------------------------------------------------------------------ |
 | **Points**                     | Control points defining the spline curve.                                            |
 | **Thickness**                  | Visual width of the line.                                                            |
+| **Sprite**                     | Optional sprite texture used for the line.                                           |
+| **Tiling**                     | Controls texture repetition along the line path.                                     |
+| **Use Gradient / Gradient**    | Enables gradient coloring along the full line length.                                |
 | **Raycast Extra Thickness**    | Adds invisible padding to improve clickability of thin lines.                        |
 | **Raycast Start / End Offset** | Excludes interaction near the start or end of the line (useful for fades).           |
 | **Subdivisions**               | Curve resolution. Higher values produce smoother lines at the cost of more vertices. |

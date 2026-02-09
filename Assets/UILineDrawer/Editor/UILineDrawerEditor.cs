@@ -38,8 +38,8 @@ namespace Maro.UILineDrawer
 
         private void OnEnable()
         {
-            _target = (UILineDrawer)target;
-            _transform = _target.transform;
+            _target = target as UILineDrawer;
+            _transform = _target != null ? _target.transform : null;
         }
 
         public override VisualElement CreateInspectorGUI()
@@ -57,6 +57,9 @@ namespace Maro.UILineDrawer
             var subdivisionsProp = serializedObject.FindProperty("m_Subdivisions");
             var raycastTargetProp = serializedObject.FindProperty("m_RaycastTarget");
             var maskableProp = serializedObject.FindProperty("m_Maskable");
+            var raycastExtraThicknessProp = serializedObject.FindProperty("m_RaycastExtraThickness");
+            var raycastStartOffsetProp = serializedObject.FindProperty("m_RaycastStartOffset");
+            var raycastEndOffsetProp = serializedObject.FindProperty("m_RaycastEndOffset");
 
             root.Add(CreateHeader("Path Configuration", 0, 2));
             root.Add(new PropertyField(pointsProp) { tooltip = "The list of points defining the shape of the path." });
@@ -95,15 +98,15 @@ namespace Maro.UILineDrawer
 
             var raycastOptionsContainer = new VisualElement { style = { paddingLeft = 15 } };
             raycastOptionsContainer.Add(
-                new PropertyField(serializedObject.FindProperty("m_RaycastExtraThickness"))
+                new PropertyField(raycastExtraThicknessProp)
                     { tooltip = "Increases the hit detection area beyond the visual thickness." }
             );
             raycastOptionsContainer.Add(
-                new PropertyField(serializedObject.FindProperty("m_RaycastStartOffset"))
+                new PropertyField(raycastStartOffsetProp)
                     { tooltip = "Adjusts where the raycast detection starts (normalized 0-1)." }
             );
             raycastOptionsContainer.Add(
-                new PropertyField(serializedObject.FindProperty("m_RaycastEndOffset"))
+                new PropertyField(raycastEndOffsetProp)
                     { tooltip = "Adjusts where the raycast detection ends (normalized 0-1)." }
             );
             root.Add(raycastOptionsContainer);
@@ -277,11 +280,12 @@ namespace Maro.UILineDrawer
 
         private void OnSceneGUI()
         {
+            if (_target == null || _transform == null) return;
             if (!SessionState.GetBool(ShowGizmosKey, true)) return;
 
             var isShiftHeld = (Event.current.modifiers & EventModifiers.Shift) != 0;
 
-            serializedObject.Update();
+            serializedObject.UpdateIfRequiredOrScript();
 
             var pointsProp = serializedObject.FindProperty("m_Points");
             DrawConnections(pointsProp);
@@ -304,13 +308,10 @@ namespace Maro.UILineDrawer
             var startOffset = serializedObject.FindProperty("m_RaycastStartOffset").floatValue;
             var endOffset = serializedObject.FindProperty("m_RaycastEndOffset").floatValue;
 
-            if (startOffset <= 0 && endOffset <= 0) return;
+            if (startOffset <= 0f && endOffset >= 1f) return;
 
             var spline = _target.Spline;
             if (spline == null || spline.Count < 2) return;
-
-            float totalLength = spline.GetLength();
-            if (totalLength <= 0) return;
 
             Handles.color = _raycastOffsetColor;
             float gizmoSize = HandleUtility.GetHandleSize(_transform.position) * 0.5f;
@@ -366,6 +367,7 @@ namespace Maro.UILineDrawer
             var rotProp = knotProp.FindPropertyRelative("Rotation");
             var tanInProp = knotProp.FindPropertyRelative("TangentIn");
             var tanOutProp = knotProp.FindPropertyRelative("TangentOut");
+            if (posProp == null || rotProp == null || tanInProp == null || tanOutProp == null) return;
 
             var localPos = GetFloat2(posProp);
             var rotation = rotProp.floatValue;
@@ -399,6 +401,7 @@ namespace Maro.UILineDrawer
 
             if (EditorGUI.EndChangeCheck())
             {
+                Undo.RecordObject(_target, "Rotate Spline Point");
                 rotProp.floatValue = newRot.eulerAngles.z;
             }
 
@@ -481,6 +484,7 @@ namespace Maro.UILineDrawer
                 );
                 if (EditorGUI.EndChangeCheck())
                 {
+                    Undo.RecordObject(_target, "Edit Tangent In");
                     var newLocalPoint = _transform.InverseTransformPoint(newWorldTanIn);
                     var diff = (Vector2)newLocalPoint - localPos;
                     Vector2 rotatedDiff = Quaternion.Inverse(knotRot) * diff;
@@ -504,6 +508,7 @@ namespace Maro.UILineDrawer
                 );
                 if (EditorGUI.EndChangeCheck())
                 {
+                    Undo.RecordObject(_target, "Edit Tangent Out");
                     var newLocalPoint = _transform.InverseTransformPoint(newWorldTanOut);
                     var diff = (Vector2)newLocalPoint - localPos;
                     Vector2 rotatedDiff = Quaternion.Inverse(knotRot) * diff;

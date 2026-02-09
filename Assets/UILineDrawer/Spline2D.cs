@@ -94,10 +94,26 @@ namespace Maro.UILineDrawer
 
         private static float NormalizeAngleDeg(float angle)
         {
+            if (angle >= -180f && angle <= 180f) return angle;
             angle = math.fmod(angle, 360f);
             if (angle > 180f) angle -= 360f;
             if (angle < -180f) angle += 360f;
             return angle;
+        }
+
+        private static float2 RotateTangent(float2 tangent, float rotationDeg)
+        {
+            if (math.lengthsq(tangent) <= 1e-12f) return tangent;
+
+            float angle = NormalizeAngleDeg(rotationDeg);
+            if (math.abs(angle) <= 1e-5f) return tangent;
+
+            float radians = math.radians(angle);
+            math.sincos(radians, out float sin, out float cos);
+            return new float2(
+                (cos * tangent.x) - (sin * tangent.y),
+                (sin * tangent.x) + (cos * tangent.y)
+            );
         }
 
         private void EnsureCurveCache()
@@ -122,11 +138,8 @@ namespace Maro.UILineDrawer
                 var startKnot = m_Knots[i];
                 var endKnot = m_Knots[nextIndex];
 
-                var startKnotRotation = NormalizeAngleDeg(startKnot.Rotation);
-                float2 tOut = math.mul(float2x2.Rotate(math.radians(startKnotRotation)), startKnot.TangentOut);
-
-                var endKnotRotation = NormalizeAngleDeg(endKnot.Rotation);
-                float2 tIn = math.mul(float2x2.Rotate(math.radians(endKnotRotation)), endKnot.TangentIn);
+                float2 tOut = RotateTangent(startKnot.TangentOut, startKnot.Rotation);
+                float2 tIn = RotateTangent(endKnot.TangentIn, endKnot.Rotation);
 
                 m_CachedCurves.Add(
                     new BezierCurve2D(

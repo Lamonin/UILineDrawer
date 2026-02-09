@@ -13,9 +13,12 @@ namespace Maro.UILineDrawer
         private const int MinSubdivisions = 1;
         private const int MaxSubdivisions = 9;
         private const float MinThickness = 0.1f;
-        private const float MinTiling = 0.01f;
         private const float MiterLimit = 1.0f;
+        private const float MinTiling = 0.01f;
         private const float TilingFactor = 0.2f;
+        private const float MinSegmentLengthSq = 1e-6f;
+        private const float MinMiterDot = 0.01f;
+        private const float RectWriteEpsilon = 0.001f;
 
         [SerializeField]
         private List<BezierKnot2D> m_Points = new List<BezierKnot2D>()
@@ -53,6 +56,8 @@ namespace Maro.UILineDrawer
 
         private readonly Spline2D _spline = new Spline2D();
         private readonly List<float2> _optimizedPoints = new List<float2>();
+        private readonly List<float> _cumulativeLengths = new List<float>();
+        private float _optimizedTotalLength;
         private bool _isDirty = true;
 
         /// <summary>
@@ -225,7 +230,7 @@ namespace Maro.UILineDrawer
         {
             if (_isDirty)
             {
-                UpdateSplineLogic();
+                UpdateSplineLogic(markVerticesDirty: true, recalculateBounds: true);
                 _isDirty = false;
             }
         }
@@ -234,8 +239,19 @@ namespace Maro.UILineDrawer
         {
             if (_optimizedPoints.Count == 0)
             {
-                rectTransform.sizeDelta = new Vector2(1f, 1f);
-                rectTransform.pivot = new Vector2(0.5f, 0.5f);
+                var defaultSize = new Vector2(1f, 1f);
+                var defaultPivot = new Vector2(0.5f, 0.5f);
+
+                if (!Approximately(rectTransform.sizeDelta, defaultSize, RectWriteEpsilon))
+                {
+                    rectTransform.sizeDelta = defaultSize;
+                }
+
+                if (!Approximately(rectTransform.pivot, defaultPivot, RectWriteEpsilon))
+                {
+                    rectTransform.pivot = defaultPivot;
+                }
+
                 return;
             }
 
@@ -256,31 +272,154 @@ namespace Maro.UILineDrawer
             size = math.max(size, new float2(MinThickness));
 
             var newPivot = new Vector2(-min.x / size.x, -min.y / size.y);
+            var newSize = new Vector2(size.x, size.y);
 
-            rectTransform.sizeDelta = new Vector2(size.x, size.y);
-            rectTransform.pivot = newPivot;
+            if (!IsFinite(new float2(newPivot.x, newPivot.y)))
+            {
+                newPivot = new Vector2(0.5f, 0.5f);
+            }
+
+            if (!Approximately(rectTransform.sizeDelta, newSize, RectWriteEpsilon))
+            {
+                rectTransform.sizeDelta = newSize;
+            }
+
+            if (!Approximately(rectTransform.pivot, newPivot, RectWriteEpsilon))
+            {
+                rectTransform.pivot = newPivot;
+            }
         }
 
-        private void UpdateSplineLogic()
+        private static bool Approximately(Vector2 a, Vector2 b, float epsilon)
         {
+            return (a - b).sqrMagnitude <= epsilon * epsilon;
+        }
+
+        private static bool IsFinite(float2 p)
+        {
+            return math.all(math.isfinite(p));
+        }
+
+        private void CollapseDegeneratePoints()
+        {
+            if (_optimizedPoints.Count == 0) return;
+
+            int writeIndex = 0;
+            float2 previousPoint = default;
+
+            for (int i = 0; i < _optimizedPoints.Count; i++)
+            {
+                float2 point = _optimizedPoints[i];
+                if (!IsFinite(point))
+                    continue;
+
+                if (writeIndex > 0 && math.distancesq(previousPoint, point) <= MinSegmentLengthSq)
+                    continue;
+
+                _optimizedPoints[writeIndex] = point;
+                previousPoint = point;
+                writeIndex++;
+            }
+
+            if (writeIndex < _optimizedPoints.Count)
+            {
+                _optimizedPoints.RemoveRange(writeIndex, _optimizedPoints.Count - writeIndex);
+            }
+        }
+
+        private void RebuildLengthCache()
+        {
+            _cumulativeLengths.Clear();
+            _optimizedTotalLength = 0f;
+
+            int count = _optimizedPoints.Count;
+            if (count == 0) return;
+
+            if (_cumulativeLengths.Capacity < count)
+            {
+                _cumulativeLengths.Capacity = count;
+            }
+
+            _cumulativeLengths.Add(0f);
+
+            float total = 0f;
+            for (int i = 1; i < count; i++)
+            {
+                total += math.distance(_optimizedPoints[i - 1], _optimizedPoints[i]);
+                _cumulativeLengths.Add(total);
+            }
+
+            _optimizedTotalLength = total;
+        }
+
+        private static bool TryGetDirection(float2 from, float2 to, out float2 direction)
+        {
+            direction = to - from;
+            float lengthSq = math.lengthsq(direction);
+            if (lengthSq <= MinSegmentLengthSq || !math.isfinite(lengthSq))
+            {
+                direction = new float2(1, 0);
+                return false;
+            }
+
+            direction *= math.rsqrt(lengthSq);
+            return true;
+        }
+
+        private static void GetPerpendicular(float2 from, float2 to, float halfThickness, out float2 perpendicular)
+        {
+            if (!TryGetDirection(from, to, out var direction))
+            {
+                perpendicular = new float2(0, halfThickness);
+                return;
+            }
+
+            perpendicular = new float2(-direction.y, direction.x) * halfThickness;
+        }
+
+        private void UpdateSplineLogic(bool markVerticesDirty, bool recalculateBounds)
+        {
+            m_Points ??= new List<BezierKnot2D>();
             _spline.SetKnots(m_Points);
 
             if (m_Points.Count == 0)
             {
                 _optimizedPoints.Clear();
+                _cumulativeLengths.Clear();
+                _optimizedTotalLength = 0f;
+                if (recalculateBounds)
+                {
+                    RecalculateBounds();
+                }
+
+                if (markVerticesDirty)
+                {
+                    SetVerticesDirty();
+                }
+
                 return;
             }
 
             BezierUtility.GenerateOptimizedSplinePoints(_spline, _optimizedPoints, m_Subdivisions);
-            RecalculateBounds();
-            SetVerticesDirty();
+            CollapseDegeneratePoints();
+            RebuildLengthCache();
+
+            if (recalculateBounds)
+            {
+                RecalculateBounds();
+            }
+
+            if (markVerticesDirty)
+            {
+                SetVerticesDirty();
+            }
         }
 
-        private void EnsureValidSpline()
+        private void EnsureValidSpline(bool recalculateBounds = true)
         {
             if (_isDirty)
             {
-                UpdateSplineLogic();
+                UpdateSplineLogic(markVerticesDirty: false, recalculateBounds: recalculateBounds);
                 _isDirty = false;
             }
         }
@@ -317,16 +456,60 @@ namespace Maro.UILineDrawer
         /// <summary>
         /// Replaces all control points with the provided collection.
         /// </summary>
+        private void ReplacePoints(IReadOnlyList<BezierKnot2D> points, int count)
+        {
+            if (m_Points.Capacity < count)
+            {
+                m_Points.Capacity = count;
+            }
+
+            int existingCount = m_Points.Count;
+
+            if (existingCount > count)
+            {
+                m_Points.RemoveRange(count, existingCount - count);
+            }
+            else
+            {
+                while (m_Points.Count < count)
+                {
+                    m_Points.Add(default);
+                }
+            }
+
+            for (int i = 0; i < count; i++)
+            {
+                m_Points[i] = points[i];
+            }
+        }
+
         public void UpdatePoints(IEnumerable<BezierKnot2D> points)
         {
-            m_Points.Clear();
-            m_Points.AddRange(points);
+            if (points == null)
+            {
+                m_Points.Clear();
+                SetDirty();
+                return;
+            }
+
+            if (points is IReadOnlyList<BezierKnot2D> readOnlyPoints)
+            {
+                ReplacePoints(readOnlyPoints, readOnlyPoints.Count);
+            }
+            else
+            {
+                m_Points.Clear();
+                m_Points.AddRange(points);
+            }
+
             SetDirty();
         }
 
         public float GetNormalizedPosition(Vector2 point, int resolution = 10, int iterations = 5)
         {
             EnsureValidSpline();
+            resolution = Mathf.Max(1, resolution);
+            iterations = Mathf.Max(0, iterations);
             _spline.GetClosestPoint(point, out var t, resolution, iterations);
             return t;
         }
@@ -357,20 +540,19 @@ namespace Maro.UILineDrawer
         protected override void OnPopulateMesh(VertexHelper vh)
         {
             vh.Clear();
+            EnsureValidSpline(recalculateBounds: false);
             CreateMesh(vh);
         }
 
         private void CreateMesh(VertexHelper vh)
         {
-            float totalLength = _spline.GetLength();
+            float totalLength = _optimizedTotalLength;
 
-            if (_spline.Count < 2 || _optimizedPoints.Count < 2 || totalLength < m_Thickness)
+            if (_spline.Count < 2 || _optimizedPoints.Count < 2 || _cumulativeLengths.Count != _optimizedPoints.Count || totalLength <= 0f)
                 return;
 
             UIVertex vertex = UIVertex.simpleVert;
             Color baseColor = color;
-
-            if (totalLength <= 0) totalLength = 1f;
 
             Vector4 uvBounds = (m_Sprite != null)
                 ? DataUtility.GetOuterUV(m_Sprite)
@@ -392,7 +574,7 @@ namespace Maro.UILineDrawer
                 current = _optimizedPoints[i + 1];
                 next = _optimizedPoints[i + 2];
 
-                currentDistance += math.distance(previous, current);
+                currentDistance = _cumulativeLengths[i + 1];
 
                 float u = uvBounds.x + (currentDistance * m_Tiling * TilingFactor);
                 float t = currentDistance / totalLength;
@@ -401,7 +583,7 @@ namespace Maro.UILineDrawer
                 AddJoint(vh, vertex, previous, current, next, u, uvBounds, currentColor, ref prevVertIndex);
             }
 
-            currentDistance += math.distance(current, next);
+            currentDistance = totalLength;
 
             Color endColor = m_UseGradient ? m_Gradient.Evaluate(1f) : baseColor;
             float endU = uvBounds.x + (currentDistance * m_Tiling * TilingFactor);
@@ -414,9 +596,8 @@ namespace Maro.UILineDrawer
             out int currentVertIndex
         )
         {
-            var direction = next - start;
-            var normal = math.normalize(new float2(-direction.y, direction.x));
-            var perp = normal * (m_Thickness / 2);
+            float halfThickness = m_Thickness * 0.5f;
+            GetPerpendicular(start, next, halfThickness, out var perp);
 
             vertex.color = col;
 
@@ -436,28 +617,36 @@ namespace Maro.UILineDrawer
             float u, Vector4 uvBounds, Color col, ref int prevVertIndex
         )
         {
-            var d1 = math.normalize(current - previous);
-            var d2 = math.normalize(next - current);
+            bool hasD1 = TryGetDirection(previous, current, out var d1);
+            bool hasD2 = TryGetDirection(current, next, out var d2);
+
+            if (!hasD1 && !hasD2)
+                return;
+
+            if (!hasD1) d1 = d2;
+            if (!hasD2) d2 = d1;
+
+            float halfThickness = m_Thickness * 0.5f;
 
             var n1 = new float2(-d1.y, d1.x);
             var n2 = new float2(-d2.y, d2.x);
+            var miter = n1 + n2;
+            float miterLenSq = math.lengthsq(miter);
+            bool useBevel = miterLenSq <= MinSegmentLengthSq || !math.isfinite(miterLenSq);
+            float dot = 1f;
 
-            var miter = math.normalize(n1 + n2);
-            float dot = math.dot(miter, n1);
-
-            if (math.abs(dot) < 0.01f)
+            if (!useBevel)
             {
-                dot = 1.0f;
-                miter = n1;
+                miter *= math.rsqrt(miterLenSq);
+                dot = math.dot(miter, n1);
+                useBevel = dot <= MinMiterDot;
             }
-
-            float miterLength = (m_Thickness / 2) / dot;
 
             vertex.color = col;
 
-            if (math.abs(miterLength) > m_Thickness * MiterLimit)
+            if (useBevel)
             {
-                var perp1 = n1 * (m_Thickness / 2);
+                var perp1 = n1 * halfThickness;
 
                 vertex.position = new float3(current + perp1, 0);
                 vertex.uv0 = new Vector2(u, uvBounds.w);
@@ -471,7 +660,7 @@ namespace Maro.UILineDrawer
                 vh.AddTriangle(prevVertIndex, bevelStartIndex, prevVertIndex + 1);
                 vh.AddTriangle(prevVertIndex + 1, bevelStartIndex, bevelStartIndex + 1);
 
-                var perp2 = n2 * (m_Thickness / 2);
+                var perp2 = n2 * halfThickness;
 
                 vertex.position = new float3(current + perp2, 0);
                 vertex.uv0 = new Vector2(u, uvBounds.w);
@@ -489,6 +678,41 @@ namespace Maro.UILineDrawer
             }
             else
             {
+                float miterLength = halfThickness / dot;
+                if (miterLength > m_Thickness * MiterLimit)
+                {
+                    var perp1 = n1 * halfThickness;
+
+                    vertex.position = new float3(current + perp1, 0);
+                    vertex.uv0 = new Vector2(u, uvBounds.w);
+                    vh.AddVert(vertex);
+
+                    vertex.position = new float3(current - perp1, 0);
+                    vertex.uv0 = new Vector2(u, uvBounds.y);
+                    vh.AddVert(vertex);
+
+                    int bevelStartIndex = vh.currentVertCount - 2;
+                    vh.AddTriangle(prevVertIndex, bevelStartIndex, prevVertIndex + 1);
+                    vh.AddTriangle(prevVertIndex + 1, bevelStartIndex, bevelStartIndex + 1);
+
+                    var perp2 = n2 * halfThickness;
+
+                    vertex.position = new float3(current + perp2, 0);
+                    vertex.uv0 = new Vector2(u, uvBounds.w);
+                    vh.AddVert(vertex);
+
+                    vertex.position = new float3(current - perp2, 0);
+                    vertex.uv0 = new Vector2(u, uvBounds.y);
+                    vh.AddVert(vertex);
+
+                    int bevelEndIndex = vh.currentVertCount - 2;
+                    vh.AddTriangle(bevelStartIndex, bevelEndIndex, bevelStartIndex + 1);
+                    vh.AddTriangle(bevelStartIndex + 1, bevelEndIndex, bevelEndIndex + 1);
+
+                    prevVertIndex = bevelEndIndex;
+                    return;
+                }
+
                 var miterVec = miter * miterLength;
 
                 vertex.position = new float3(current + miterVec, 0);
@@ -512,9 +736,8 @@ namespace Maro.UILineDrawer
             int prevVertIndex
         )
         {
-            var dir = end - previous;
-            var normal = math.normalize(new float2(-dir.y, dir.x));
-            var perp = normal * (m_Thickness / 2);
+            float halfThickness = m_Thickness * 0.5f;
+            GetPerpendicular(previous, end, halfThickness, out var perp);
 
             vertex.color = col;
 
