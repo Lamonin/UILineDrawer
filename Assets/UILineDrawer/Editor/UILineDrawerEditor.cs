@@ -58,6 +58,7 @@ namespace Maro.UILineDrawer
             var raycastTargetProp = serializedObject.FindProperty("m_RaycastTarget");
             var maskableProp = serializedObject.FindProperty("m_Maskable");
             var raycastExtraThicknessProp = serializedObject.FindProperty("m_RaycastExtraThickness");
+            var raycastOffsetModeProp = serializedObject.FindProperty("m_RaycastOffsetMode");
             var raycastStartOffsetProp = serializedObject.FindProperty("m_RaycastStartOffset");
             var raycastEndOffsetProp = serializedObject.FindProperty("m_RaycastEndOffset");
 
@@ -101,19 +102,40 @@ namespace Maro.UILineDrawer
                 new PropertyField(raycastExtraThicknessProp)
                     { tooltip = "Increases the hit detection area beyond the visual thickness." }
             );
-            raycastOptionsContainer.Add(
-                new PropertyField(raycastStartOffsetProp)
-                    { tooltip = "Adjusts where the raycast detection starts (normalized 0-1)." }
-            );
-            raycastOptionsContainer.Add(
-                new PropertyField(raycastEndOffsetProp)
-                    { tooltip = "Adjusts where the raycast detection ends (normalized 0-1)." }
-            );
+            var raycastOffsetModeField = new PropertyField(raycastOffsetModeProp)
+            {
+                tooltip = "Select how start and end offsets are interpreted."
+            };
+            var raycastStartOffsetField = new PropertyField(raycastStartOffsetProp);
+            var raycastEndOffsetField = new PropertyField(raycastEndOffsetProp);
+            var normalizedRangeSlider = new MinMaxSlider("Raycast Range (0..1)", 0f, 1f, 0f, 1f)
+            {
+                tooltip = "Active normalized raycast interval. Left handle = start side, right handle = end side."
+            };
+            var suppressNormalizedRangeSliderChange = false;
+
+            normalizedRangeSlider.RegisterValueChangedCallback(evt =>
+            {
+                if (suppressNormalizedRangeSliderChange) return;
+
+                raycastStartOffsetProp.floatValue = Mathf.Clamp01(evt.newValue.x);
+                raycastEndOffsetProp.floatValue = Mathf.Clamp01(1f - evt.newValue.y);
+                serializedObject.ApplyModifiedProperties();
+            });
+
+            raycastOptionsContainer.Add(raycastOffsetModeField);
+            raycastOptionsContainer.Add(raycastStartOffsetField);
+            raycastOptionsContainer.Add(raycastEndOffsetField);
+            raycastOptionsContainer.Add(normalizedRangeSlider);
             root.Add(raycastOptionsContainer);
             root.Add(new PropertyField(maskableProp) { tooltip = "Whether the path is affected by UI Mask components." });
 
             ToggleRaycastOptions(raycastTargetProp.boolValue);
+            UpdateRaycastOffsetControls();
             root.TrackPropertyValue(raycastTargetProp, prop => ToggleRaycastOptions(prop.boolValue));
+            root.TrackPropertyValue(raycastOffsetModeProp, _ => UpdateRaycastOffsetControls());
+            root.TrackPropertyValue(raycastStartOffsetProp, _ => UpdateNormalizedRangeSlider());
+            root.TrackPropertyValue(raycastEndOffsetProp, _ => UpdateNormalizedRangeSlider());
 
             root.Add(
                 new VisualElement
@@ -251,6 +273,51 @@ namespace Maro.UILineDrawer
                 raycastOptionsContainer.style.display = isEnabled ? DisplayStyle.Flex : DisplayStyle.None;
             }
 
+            void UpdateRaycastOffsetControls()
+            {
+                bool isFixed = raycastOffsetModeProp.enumValueIndex == (int)RaycastOffsetMode.Fixed;
+                if (isFixed)
+                {
+                    raycastStartOffsetField.label = "Raycast Start Offset (Units)";
+                    raycastStartOffsetField.tooltip = "Exclude pointer hits near the line start using Canvas local units.";
+                    raycastEndOffsetField.label = "Raycast End Offset (Units)";
+                    raycastEndOffsetField.tooltip = "Exclude pointer hits near the line end using Canvas local units.";
+                    raycastStartOffsetField.style.display = DisplayStyle.Flex;
+                    raycastEndOffsetField.style.display = DisplayStyle.Flex;
+                    normalizedRangeSlider.style.display = DisplayStyle.None;
+                }
+                else
+                {
+                    raycastStartOffsetField.label = "Raycast Start Offset (Normalized)";
+                    raycastStartOffsetField.tooltip = "Exclude pointer hits near the line start (0..1 of total length).";
+                    raycastEndOffsetField.label = "Raycast End Offset (Normalized)";
+                    raycastEndOffsetField.tooltip = "Exclude pointer hits near the line end (0..1 of total length).";
+                    raycastStartOffsetField.style.display = DisplayStyle.None;
+                    raycastEndOffsetField.style.display = DisplayStyle.None;
+                    normalizedRangeSlider.style.display = DisplayStyle.Flex;
+                    UpdateNormalizedRangeSlider();
+                }
+            }
+
+            void UpdateNormalizedRangeSlider()
+            {
+                if (raycastOffsetModeProp.enumValueIndex == (int)RaycastOffsetMode.Fixed) return;
+
+                float startOffset = Mathf.Clamp01(raycastStartOffsetProp.floatValue);
+                float endOffset = Mathf.Clamp01(raycastEndOffsetProp.floatValue);
+
+                float rangeMin = startOffset;
+                float rangeMax = 1f - endOffset;
+                if (rangeMax < rangeMin)
+                {
+                    rangeMax = rangeMin;
+                }
+
+                suppressNormalizedRangeSliderChange = true;
+                normalizedRangeSlider.SetValueWithoutNotify(new Vector2(rangeMin, rangeMax));
+                suppressNormalizedRangeSliderChange = false;
+            }
+
             void UpdateColorMode(string mode)
             {
                 bool isGradient = mode == "Gradient";
@@ -307,25 +374,63 @@ namespace Maro.UILineDrawer
 
             var startOffset = serializedObject.FindProperty("m_RaycastStartOffset").floatValue;
             var endOffset = serializedObject.FindProperty("m_RaycastEndOffset").floatValue;
-
-            if (startOffset <= 0f && endOffset >= 1f) return;
+            var offsetMode = (RaycastOffsetMode)serializedObject
+                .FindProperty("m_RaycastOffsetMode")
+                .enumValueIndex;
 
             var spline = _target.Spline;
             if (spline == null || spline.Count < 2) return;
 
+            if (offsetMode == RaycastOffsetMode.Normalized)
+            {
+                startOffset = Mathf.Clamp01(startOffset);
+                endOffset = Mathf.Clamp01(endOffset);
+
+                if (startOffset <= 0f && endOffset <= 0f) return;
+            }
+            else
+            {
+                float length = spline.GetLength();
+                if (length <= 0f) return;
+
+                startOffset = Mathf.Max(startOffset, 0f);
+                endOffset = Mathf.Max(endOffset, 0f);
+
+                if (startOffset <= 0f && endOffset <= 0f) return;
+            }
+
             Handles.color = _raycastOffsetColor;
             float gizmoSize = HandleUtility.GetHandleSize(_transform.position) * 0.5f;
 
-            if (startOffset > 0)
+            if (offsetMode == RaycastOffsetMode.Fixed)
             {
-                float t = Mathf.Clamp01(startOffset);
-                DrawOffsetGizmo(spline, t, gizmoSize);
-            }
+                float length = spline.GetLength();
 
-            if (endOffset < 1)
+                if (startOffset > 0f)
+                {
+                    float startT = Mathf.Clamp01(startOffset / length);
+                    DrawOffsetGizmo(spline, startT, gizmoSize);
+                }
+
+                if (endOffset > 0f)
+                {
+                    float endT = Mathf.Clamp01(1f - (endOffset / length));
+                    DrawOffsetGizmo(spline, endT, gizmoSize);
+                }
+            }
+            else
             {
-                float t = Mathf.Clamp01(endOffset);
-                DrawOffsetGizmo(spline, t, gizmoSize);
+                if (startOffset > 0)
+                {
+                    float t = Mathf.Clamp01(startOffset);
+                    DrawOffsetGizmo(spline, t, gizmoSize);
+                }
+
+                if (endOffset > 0)
+                {
+                    float t = Mathf.Clamp01(1f - endOffset);
+                    DrawOffsetGizmo(spline, t, gizmoSize);
+                }
             }
         }
 

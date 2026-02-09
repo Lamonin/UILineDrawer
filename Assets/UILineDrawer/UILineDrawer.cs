@@ -45,10 +45,13 @@ namespace Maro.UILineDrawer
         [SerializeField]
         private float m_RaycastExtraThickness = 1;
 
-        [SerializeField, Range(0, 1)]
+        [SerializeField]
+        private RaycastOffsetMode m_RaycastOffsetMode = RaycastOffsetMode.Normalized;
+
+        [SerializeField]
         private float m_RaycastStartOffset = 0.0f;
 
-        [SerializeField, Range(0, 1)]
+        [SerializeField]
         private float m_RaycastEndOffset = 1.0f;
 
         [SerializeField]
@@ -60,6 +63,11 @@ namespace Maro.UILineDrawer
         private float _optimizedTotalLength;
         private bool _isDirty = true;
         private bool _isBoundsDirty = true;
+
+#if UNITY_EDITOR
+        private RaycastOffsetMode _previousRaycastOffsetMode = RaycastOffsetMode.Normalized;
+        private bool _hasRaycastOffsetModeSnapshot;
+#endif
 
         /// <summary>
         /// Gets the underlying spline used for drawing.
@@ -154,14 +162,26 @@ namespace Maro.UILineDrawer
             set => m_RaycastExtraThickness = Mathf.Max(value, 0);
         }
 
+        public RaycastOffsetMode OffsetMode
+        {
+            get => m_RaycastOffsetMode;
+            set
+            {
+                if (m_RaycastOffsetMode == value) return;
+                ConvertRaycastOffsets(m_RaycastOffsetMode, value);
+                m_RaycastOffsetMode = value;
+                SnapshotRaycastOffsetMode();
+                SanitizeRaycastOffsets();
+            }
+        }
+
         public float RaycastStartOffset
         {
             get => m_RaycastStartOffset;
             set
             {
-                m_RaycastStartOffset = Mathf.Clamp01(value);
-                if (m_RaycastStartOffset > m_RaycastEndOffset)
-                    m_RaycastEndOffset = m_RaycastStartOffset;
+                m_RaycastStartOffset = value;
+                SanitizeRaycastOffsets();
             }
         }
 
@@ -170,9 +190,8 @@ namespace Maro.UILineDrawer
             get => m_RaycastEndOffset;
             set
             {
-                m_RaycastEndOffset = Mathf.Clamp01(value);
-                if (m_RaycastEndOffset < m_RaycastStartOffset)
-                    m_RaycastStartOffset = m_RaycastEndOffset;
+                m_RaycastEndOffset = value;
+                SanitizeRaycastOffsets();
             }
         }
 
@@ -193,6 +212,7 @@ namespace Maro.UILineDrawer
         protected override void OnEnable()
         {
             base.OnEnable();
+            SnapshotRaycastOffsetMode();
             SetDirty();
         }
 
@@ -204,23 +224,57 @@ namespace Maro.UILineDrawer
             m_Thickness = Mathf.Max(m_Thickness, MinThickness);
             m_Subdivisions = Mathf.Clamp(m_Subdivisions, MinSubdivisions, MaxSubdivisions);
             m_Tiling = Mathf.Max(m_Tiling, MinTiling);
-            m_RaycastExtraThickness = Mathf.Max(m_RaycastExtraThickness, 0);
-            m_RaycastStartOffset = Mathf.Clamp01(m_RaycastStartOffset);
-            m_RaycastEndOffset = Mathf.Clamp01(m_RaycastEndOffset);
 
-            if (m_RaycastStartOffset > m_RaycastEndOffset)
+            if (_hasRaycastOffsetModeSnapshot)
             {
-                m_RaycastStartOffset = m_RaycastEndOffset;
+                if (_previousRaycastOffsetMode != m_RaycastOffsetMode)
+                {
+                    ConvertRaycastOffsets(_previousRaycastOffsetMode, m_RaycastOffsetMode);
+                }
             }
 
-            if  (m_RaycastEndOffset < m_RaycastStartOffset)
-            {
-                m_RaycastEndOffset = m_RaycastStartOffset;
-            }
+            SnapshotRaycastOffsetMode();
+            SanitizeRaycastOffsets();
 
             SetDirty();
         }
 #endif
+
+        private void SnapshotRaycastOffsetMode()
+        {
+#if UNITY_EDITOR
+            _previousRaycastOffsetMode = m_RaycastOffsetMode;
+            _hasRaycastOffsetModeSnapshot = true;
+#endif
+        }
+
+        private float GetOffsetConversionLength()
+        {
+            EnsureValidSpline(recalculateBounds: false);
+            return math.max(_optimizedTotalLength, 0f);
+        }
+
+        private void ConvertRaycastOffsets(RaycastOffsetMode fromMode, RaycastOffsetMode toMode)
+        {
+            float length = GetOffsetConversionLength();
+            RaycastOffsetUtility.Convert(
+                fromMode,
+                toMode,
+                length,
+                ref m_RaycastStartOffset,
+                ref m_RaycastEndOffset
+            );
+        }
+
+        private void SanitizeRaycastOffsets()
+        {
+            RaycastOffsetUtility.Sanitize(
+                ref m_RaycastExtraThickness,
+                m_RaycastOffsetMode,
+                ref m_RaycastStartOffset,
+                ref m_RaycastEndOffset
+            );
+        }
 
         private void SetDirty()
         {
@@ -240,7 +294,13 @@ namespace Maro.UILineDrawer
 
         private void RecalculateBounds()
         {
-            if (_optimizedPoints.Count == 0)
+            if (!PolylineUtility.TryCalculatePaddedBounds(
+                    _optimizedPoints,
+                    (m_Thickness * 0.5f) + m_RaycastExtraThickness,
+                    MinThickness,
+                    out var min,
+                    out var max
+                ))
             {
                 var defaultSize = new Vector2(1f, 1f);
                 var defaultPivot = new Vector2(0.5f, 0.5f);
@@ -258,22 +318,7 @@ namespace Maro.UILineDrawer
                 return;
             }
 
-            var min = new float2(float.MaxValue);
-            var max = new float2(float.MinValue);
-
-            foreach (var p in _optimizedPoints)
-            {
-                min = math.min(min, p);
-                max = math.max(max, p);
-            }
-
-            float padding = m_Thickness * 0.5f + m_RaycastExtraThickness;
-            min -= padding;
-            max += padding;
-
             var size = max - min;
-            size = math.max(size, new float2(MinThickness));
-
             var newPivot = new Vector2(-min.x / size.x, -min.y / size.y);
             var newSize = new Vector2(size.x, size.y);
 
@@ -301,58 +346,6 @@ namespace Maro.UILineDrawer
         private static bool IsFinite(float2 p)
         {
             return math.all(math.isfinite(p));
-        }
-
-        private void CollapseDegeneratePoints()
-        {
-            if (_optimizedPoints.Count == 0) return;
-
-            int writeIndex = 0;
-            float2 previousPoint = default;
-
-            for (int i = 0; i < _optimizedPoints.Count; i++)
-            {
-                float2 point = _optimizedPoints[i];
-                if (!IsFinite(point))
-                    continue;
-
-                if (writeIndex > 0 && math.distancesq(previousPoint, point) <= MinSegmentLengthSq)
-                    continue;
-
-                _optimizedPoints[writeIndex] = point;
-                previousPoint = point;
-                writeIndex++;
-            }
-
-            if (writeIndex < _optimizedPoints.Count)
-            {
-                _optimizedPoints.RemoveRange(writeIndex, _optimizedPoints.Count - writeIndex);
-            }
-        }
-
-        private void RebuildLengthCache()
-        {
-            _cumulativeLengths.Clear();
-            _optimizedTotalLength = 0f;
-
-            int count = _optimizedPoints.Count;
-            if (count == 0) return;
-
-            if (_cumulativeLengths.Capacity < count)
-            {
-                _cumulativeLengths.Capacity = count;
-            }
-
-            _cumulativeLengths.Add(0f);
-
-            float total = 0f;
-            for (int i = 1; i < count; i++)
-            {
-                total += math.distance(_optimizedPoints[i - 1], _optimizedPoints[i]);
-                _cumulativeLengths.Add(total);
-            }
-
-            _optimizedTotalLength = total;
         }
 
         private static bool TryGetDirection(float2 from, float2 to, out float2 direction)
@@ -404,8 +397,8 @@ namespace Maro.UILineDrawer
             }
 
             BezierUtility.GenerateOptimizedSplinePoints(_spline, _optimizedPoints, m_Subdivisions);
-            CollapseDegeneratePoints();
-            RebuildLengthCache();
+            PolylineUtility.CollapseDegeneratePoints(_optimizedPoints, MinSegmentLengthSq);
+            _optimizedTotalLength = PolylineUtility.RebuildLengthCache(_optimizedPoints, _cumulativeLengths);
 
             if (recalculateBounds)
             {
@@ -536,10 +529,29 @@ namespace Maro.UILineDrawer
 
             if (distance < m_Thickness + m_RaycastExtraThickness)
             {
-                var pointNormalizedT = t;
+                float distanceAlongLine = 0f;
+                if (m_RaycastOffsetMode == RaycastOffsetMode.Fixed)
+                {
+                    if (!PolylineUtility.TryGetDistanceAlongPolyline(
+                            _optimizedPoints,
+                            _cumulativeLengths,
+                            pointOnSpline,
+                            MinSegmentLengthSq,
+                            out distanceAlongLine
+                        ))
+                    {
+                        return false;
+                    }
+                }
 
-                return pointNormalizedT >= m_RaycastStartOffset
-                       && pointNormalizedT <= m_RaycastEndOffset;
+                return RaycastOffsetUtility.IsPointInsideRange(
+                    m_RaycastOffsetMode,
+                    m_RaycastStartOffset,
+                    m_RaycastEndOffset,
+                    t,
+                    distanceAlongLine,
+                    _optimizedTotalLength
+                );
             }
 
             return false;
