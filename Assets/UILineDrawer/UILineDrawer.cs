@@ -59,6 +59,7 @@ namespace Maro.UILineDrawer
         private readonly List<float> _cumulativeLengths = new List<float>();
         private float _optimizedTotalLength;
         private bool _isDirty = true;
+        private bool _isBoundsDirty = true;
 
         /// <summary>
         /// Gets the underlying spline used for drawing.
@@ -224,14 +225,16 @@ namespace Maro.UILineDrawer
         private void SetDirty()
         {
             _isDirty = true;
+            _isBoundsDirty = true;
         }
 
         private void Update()
         {
-            if (_isDirty)
+            if (_isDirty || _isBoundsDirty)
             {
-                UpdateSplineLogic(markVerticesDirty: true, recalculateBounds: true);
+                UpdateSplineLogic(markVerticesDirty: _isDirty, recalculateBounds: true);
                 _isDirty = false;
+                _isBoundsDirty = false;
             }
         }
 
@@ -417,10 +420,15 @@ namespace Maro.UILineDrawer
 
         private void EnsureValidSpline(bool recalculateBounds = true)
         {
-            if (_isDirty)
+            if (_isDirty || (recalculateBounds && _isBoundsDirty))
             {
                 UpdateSplineLogic(markVerticesDirty: false, recalculateBounds: recalculateBounds);
                 _isDirty = false;
+
+                if (recalculateBounds)
+                {
+                    _isBoundsDirty = false;
+                }
             }
         }
 
