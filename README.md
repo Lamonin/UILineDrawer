@@ -11,7 +11,7 @@ UILineDrawer was developed and production-tested in the
 <details open>
     <summary>Line Example</summary>
 
-4 point spline with subdivision level 3 (gizmos enabled)
+4 point spline with subdivision level 1 (gizmos enabled)
 
 ![Line Example](images/example_1.png)
 
@@ -71,7 +71,7 @@ Make sure it installed via the Package Manager if they not installed automatical
 ## Installation
 
 ```
-https://github.com/Lamonin/UILineDrawer.git?path=/Assets/UILineDrawer/#0.3.2
+https://github.com/Lamonin/UILineDrawer.git?path=/Assets/UILineDrawer/#0.4.0
 ```
 
 1. Open **Window** → **Package Manager**.
