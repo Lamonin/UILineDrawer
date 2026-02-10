@@ -652,103 +652,41 @@ namespace Maro.UILineDrawer
             var n2 = new float2(-d2.y, d2.x);
             var miter = n1 + n2;
             float miterLenSq = math.lengthsq(miter);
-            bool useBevel = miterLenSq <= MinSegmentLengthSq || !math.isfinite(miterLenSq);
-            float dot = 1f;
+            var joinOffset = n1 * halfThickness;
 
-            if (!useBevel)
+            if (miterLenSq > MinSegmentLengthSq && math.isfinite(miterLenSq))
             {
                 miter *= math.rsqrt(miterLenSq);
-                dot = math.dot(miter, n1);
-                useBevel = dot <= MinMiterDot;
+                float dot = math.dot(miter, n1);
+
+                if (dot > MinMiterDot && math.isfinite(dot))
+                {
+                    float miterLength = halfThickness / dot;
+                    float clippedMiterLength = math.min(miterLength, m_Thickness * MiterLimit);
+
+                    if (math.isfinite(clippedMiterLength))
+                    {
+                        // Clip the miter instead of emitting overlapping bevel quads on sharp corners.
+                        joinOffset = miter * clippedMiterLength;
+                    }
+                }
             }
 
             vertex.color = col;
 
-            if (useBevel)
-            {
-                var perp1 = n1 * halfThickness;
+            vertex.position = new float3(current + joinOffset, 0);
+            vertex.uv0 = new Vector2(u, uvBounds.w);
+            vh.AddVert(vertex);
 
-                vertex.position = new float3(current + perp1, 0);
-                vertex.uv0 = new Vector2(u, uvBounds.w);
-                vh.AddVert(vertex);
+            vertex.position = new float3(current - joinOffset, 0);
+            vertex.uv0 = new Vector2(u, uvBounds.y);
+            vh.AddVert(vertex);
 
-                vertex.position = new float3(current - perp1, 0);
-                vertex.uv0 = new Vector2(u, uvBounds.y);
-                vh.AddVert(vertex);
+            int currentIndex = vh.currentVertCount - 2;
+            vh.AddTriangle(prevVertIndex, currentIndex, prevVertIndex + 1);
+            vh.AddTriangle(prevVertIndex + 1, currentIndex, currentIndex + 1);
 
-                int bevelStartIndex = vh.currentVertCount - 2;
-                vh.AddTriangle(prevVertIndex, bevelStartIndex, prevVertIndex + 1);
-                vh.AddTriangle(prevVertIndex + 1, bevelStartIndex, bevelStartIndex + 1);
-
-                var perp2 = n2 * halfThickness;
-
-                vertex.position = new float3(current + perp2, 0);
-                vertex.uv0 = new Vector2(u, uvBounds.w);
-                vh.AddVert(vertex);
-
-                vertex.position = new float3(current - perp2, 0);
-                vertex.uv0 = new Vector2(u, uvBounds.y);
-                vh.AddVert(vertex);
-
-                int bevelEndIndex = vh.currentVertCount - 2;
-                vh.AddTriangle(bevelStartIndex, bevelEndIndex, bevelStartIndex + 1);
-                vh.AddTriangle(bevelStartIndex + 1, bevelEndIndex, bevelEndIndex + 1);
-
-                prevVertIndex = bevelEndIndex;
-            }
-            else
-            {
-                float miterLength = halfThickness / dot;
-                if (miterLength > m_Thickness * MiterLimit)
-                {
-                    var perp1 = n1 * halfThickness;
-
-                    vertex.position = new float3(current + perp1, 0);
-                    vertex.uv0 = new Vector2(u, uvBounds.w);
-                    vh.AddVert(vertex);
-
-                    vertex.position = new float3(current - perp1, 0);
-                    vertex.uv0 = new Vector2(u, uvBounds.y);
-                    vh.AddVert(vertex);
-
-                    int bevelStartIndex = vh.currentVertCount - 2;
-                    vh.AddTriangle(prevVertIndex, bevelStartIndex, prevVertIndex + 1);
-                    vh.AddTriangle(prevVertIndex + 1, bevelStartIndex, bevelStartIndex + 1);
-
-                    var perp2 = n2 * halfThickness;
-
-                    vertex.position = new float3(current + perp2, 0);
-                    vertex.uv0 = new Vector2(u, uvBounds.w);
-                    vh.AddVert(vertex);
-
-                    vertex.position = new float3(current - perp2, 0);
-                    vertex.uv0 = new Vector2(u, uvBounds.y);
-                    vh.AddVert(vertex);
-
-                    int bevelEndIndex = vh.currentVertCount - 2;
-                    vh.AddTriangle(bevelStartIndex, bevelEndIndex, bevelStartIndex + 1);
-                    vh.AddTriangle(bevelStartIndex + 1, bevelEndIndex, bevelEndIndex + 1);
-
-                    prevVertIndex = bevelEndIndex;
-                    return;
-                }
-
-                var miterVec = miter * miterLength;
-
-                vertex.position = new float3(current + miterVec, 0);
-                vertex.uv0 = new Vector2(u, uvBounds.w);
-                vh.AddVert(vertex);
-
-                vertex.position = new float3(current - miterVec, 0);
-                vertex.uv0 = new Vector2(u, uvBounds.y);
-                vh.AddVert(vertex);
-
-                int currentIndex = vh.currentVertCount - 2;
-                vh.AddTriangle(prevVertIndex, currentIndex, prevVertIndex + 1);
-                vh.AddTriangle(prevVertIndex + 1, currentIndex, currentIndex + 1);
-
-                prevVertIndex = currentIndex;
-            }
+            prevVertIndex = currentIndex;
         }
 
         private void EndLineSegment(
