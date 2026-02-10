@@ -1,6 +1,6 @@
 {
   "name": "com.maro.uilinedrawer",
-  "version": "0.3.2",
+  "version": "0.4.0",
   "displayName": "UILineDrawer",
   "description": "Line drawer optimized for Unity canvas space with raycasts and mask support",
   "unity": "2022.3",

@@ -11,9 +11,9 @@ UILineDrawer was developed and production-tested in the
 <details open>
     <summary>Line Example</summary>
 
-4 point spline with subdivision level 3
+4 point spline with subdivision level 3 (gizmos enabled)
 
-![Line Example](images/line.png)
+![Line Example](images/example_1.png)
 
 </details>
 
